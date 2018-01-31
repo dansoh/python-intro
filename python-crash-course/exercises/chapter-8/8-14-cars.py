@@ -1,4 +1,7 @@
 def car_info(manufacturer, model, **car_details):
+    '''
+    Build a dictionary with car details provided
+    '''
     car = {}
     car['manufacturer']= manufacturer
     car['model']= model

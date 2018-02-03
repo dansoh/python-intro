@@ -49,8 +49,8 @@ class IceCreamStand(Restaurant):
         Set 3 default flavors in a list
         """
         super().__init__(restaurant_name, cuisine_type)
-        self.flavors = ['chocolate', 'vanilla', 'strawberry']
-            
+        self.flavors = []
+                    
     def display_flavors(self):
         """Display the flavors offered by the restaurant."""
         print(self.restaurant_name.title() + " serves: ")
@@ -58,6 +58,7 @@ class IceCreamStand(Restaurant):
             print("\t-" + flavor.title())
 
 ben_and_jerrys = IceCreamStand('ben and jerrys', 'dessert')
+ben_and_jerrys.flavors = ['chocolate', 'vanilla', 'strawberry']
 ben_and_jerrys.display_flavors()
 
         

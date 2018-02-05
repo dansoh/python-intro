@@ -1,0 +1,4 @@
+In Python you can write for loops and while loops
+In Python you can create dictionaries, which are key value pairs
+In Python you can make immutable lists called tuples
+In Python you can create reusable chunks of code called functions

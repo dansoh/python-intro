@@ -2,7 +2,6 @@ import sys
 
 import pygame
 
-from bullet import Bullet
 from star import Star
 
 def check_events(ai_settings, screen):

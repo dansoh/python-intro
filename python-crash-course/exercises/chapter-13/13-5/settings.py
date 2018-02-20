@@ -8,7 +8,7 @@ class Settings():
         self.screen_height = 800
         self.bg_color = (230, 230, 230)
         
-        # Ship settings
+        # Basket settings
         self.basket_speed_factor = 3
         
         # Ball settings

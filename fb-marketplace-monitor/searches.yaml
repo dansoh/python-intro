@@ -1,0 +1,12 @@
+# Each entry is a named Facebook Marketplace search URL.
+# Build URLs from facebook.com/marketplace; useful query params:
+#   query, minPrice, maxPrice, radius, daysSinceListed,
+#   sortBy=creation_time_descend   <- always include this so newest comes first
+#
+# Replace the examples below with your own.
+
+- name: bikes-sf
+  url: https://www.facebook.com/marketplace/sanfrancisco/search?query=bike&minPrice=100&maxPrice=500&daysSinceListed=1&sortBy=creation_time_descend
+
+- name: cameras-sf
+  url: https://www.facebook.com/marketplace/sanfrancisco/search?query=camera&sortBy=creation_time_descend

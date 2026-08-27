@@ -6,7 +6,8 @@
   --gold:#C9A24E;
   --label:#FFFFFF;
   --head:#C3CBD6;
-  --line:rgba(255,255,255,.11);
+  --line:rgba(255,255,255,.14);
+  --rule:2px;
   --fill:#1D2634;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -31,10 +32,10 @@ body.clear #table{background:transparent}
 .cell{
   display:flex;align-items:center;
   padding:0 34px;
-  border-bottom:1px solid var(--line);
+  border-bottom:var(--rule) solid var(--line);
 }
 .cell.val{justify-content:center;padding:0 24px}
-.cell.left{border-right:1px solid var(--line)}
+.cell.left{border-right:var(--rule) solid var(--line)}
 
 /* header row */
 .head{
@@ -49,6 +50,16 @@ body.clear #table{background:transparent}
 .row .ico{margin-left:12px;font-size:26px;line-height:1;transform:translateY(1px)}
 .row.gold{color:var(--gold)}
 
+/* highlight chip on the headline number */
+.chip{
+  display:inline-flex;align-items:center;
+  padding:11px 22px 13px;
+  border-radius:12px;
+  line-height:1;
+  background:rgba(201,162,78,.13);
+  border:2px solid rgba(201,162,78,.45);
+}
+
 /* last row: no trailing rule, no trailing edge */
 .cell.last{border-bottom:0}
 </style>
@@ -58,7 +69,7 @@ body.clear #table{background:transparent}
   <div class="cell head val">Seller Fees</div>
 
   <div class="cell row left">Misprint<span class="ico">⚙️</span></div>
-  <div class="cell row val gold">5-7%</div>
+  <div class="cell row val gold"><span class="chip">5-7%</span></div>
 
   <div class="cell row left">Other Card Marketplaces<span class="ico">🔍</span></div>
   <div class="cell row val">10-15%</div>

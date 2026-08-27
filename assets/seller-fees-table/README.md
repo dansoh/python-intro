@@ -27,6 +27,9 @@ editors treat as true overlay footage:
 
 Regenerate with `./encode-alpha-video.sh [source.png] [seconds]`.
 
+Grid rules are 2px (`--rule`) so they survive being scaled down in a
+timeline, and the headline number sits in a gold `.chip` box.
+
 `seller-fees-table.html` is the source. Edit the copy there, then
 `node render.js` to re-export all three. Body class picks the fill:
 `clear` / `solid` / `glass`. Corner radius is `border-radius` on `#table`.

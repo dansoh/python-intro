@@ -1,7 +1,8 @@
 # Seller fees table — overlay
 
-Edge-to-edge table graphic: no outer card, no border, no padding around the
-grid, so the PNG bounds are exactly the table. Drop straight into an editor.
+Edge-to-edge table graphic with 22px rounded corners: no outer card, no
+border, no padding around the grid, so the PNG bounds are exactly the table.
+Drop straight into an editor.
 
 | File | Use |
 | --- | --- |
@@ -13,4 +14,4 @@ All three are 3600 × 930 (1200 × 310 CSS at 3×).
 
 `seller-fees-table.html` is the source. Edit the copy there, then
 `node render.js` to re-export all three. Body class picks the fill:
-`clear` / `solid` / `glass`.
+`clear` / `solid` / `glass`. Corner radius is `border-radius` on `#table`.

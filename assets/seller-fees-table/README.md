@@ -27,6 +27,17 @@ editors treat as true overlay footage:
 
 Regenerate with `./encode-alpha-video.sh [source.png] [seconds]`.
 
+## Animated highlight
+
+`seller-fees-highlight.webm` / `.mov` — 2.3 s at 60 fps, alpha intact. The
+table holds static; at 0.9 s a gold wipe crosses the `5-7%` chip over 0.38 s
+(easeOutCubic), turning the digits gold as it passes and fading the border
+in, then holds to the end. Before the wipe the number is plain white like
+the other rows.
+
+`node animate.js && ./encode-highlight.sh` rebuilds it — timings are the
+constants at the top of `animate.js`.
+
 Grid rules are 2px (`--rule`) so they survive being scaled down in a
 timeline, and the headline number sits in a gold `.chip` box.
 

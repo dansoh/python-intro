@@ -27,9 +27,6 @@ editors treat as true overlay footage:
 
 Regenerate with `./encode-alpha-video.sh [source.png] [seconds]`.
 
-The Misprint row has a `.logo` slot — swap the text cell for the commented-out
-`<img class="logo">` line and point it at the wordmark.
-
 Grid rules are 2px (`--rule`) so they survive being scaled down in a
 timeline, and the headline number sits in a gold `.chip` box.
 

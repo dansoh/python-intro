@@ -1,0 +1,67 @@
+<meta charset="utf-8">
+<title>Seller Fees Table</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+:root{
+  --gold:#C9A24E;
+  --label:#FFFFFF;
+  --head:#C3CBD6;
+  --line:rgba(255,255,255,.11);
+  --fill:#1D2634;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:transparent}
+body{display:inline-block}
+
+#table{
+  font-family:'Inter',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+  width:1200px;
+  display:grid;
+  grid-template-columns:57.5% 42.5%;
+  overflow:hidden;                 /* nothing bleeds past the edge */
+  -webkit-font-smoothing:antialiased;
+}
+
+/* fill variants — body class switches them */
+body.solid #table{background:var(--fill)}
+body.glass #table{background:rgba(23,31,44,.82)}
+body.clear #table{background:transparent}
+
+.cell{
+  display:flex;align-items:center;
+  padding:0 34px;
+  border-bottom:1px solid var(--line);
+}
+.cell.val{justify-content:center;padding:0 24px}
+.cell.left{border-right:1px solid var(--line)}
+
+/* header row */
+.head{
+  height:58px;
+  color:var(--head);
+  font-size:21px;font-weight:600;
+  letter-spacing:.095em;text-transform:uppercase;
+}
+
+/* body rows */
+.row{height:84px;font-size:32px;font-weight:700;color:var(--label)}
+.row .ico{margin-left:12px;font-size:26px;line-height:1;transform:translateY(1px)}
+.row.gold{color:var(--gold)}
+
+/* last row: no trailing rule, no trailing edge */
+.cell.last{border-bottom:0}
+</style>
+
+<div id="table">
+  <div class="cell head left">Platform</div>
+  <div class="cell head val">Seller Fees</div>
+
+  <div class="cell row left">Misprint<span class="ico">⚙️</span></div>
+  <div class="cell row val gold">5-7%</div>
+
+  <div class="cell row left">Other Card Marketplaces<span class="ico">🔍</span></div>
+  <div class="cell row val">10-15%</div>
+
+  <div class="cell row left last">General Auction Sites</div>
+  <div class="cell row val last">12-15%+</div>
+</div>

@@ -16,9 +16,9 @@ body{display:inline-block}
 
 #table{
   font-family:'Inter',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
-  width:1200px;
+  width:840px;
   display:grid;
-  grid-template-columns:57.5% 42.5%;
+  grid-template-columns:57% 43%;
   border-radius:22px;
   overflow:hidden;                 /* clips fills + rules to the rounded edge */
   -webkit-font-smoothing:antialiased;
@@ -47,7 +47,7 @@ body.clear #table{background:transparent}
 
 /* body rows */
 .row{height:84px;font-size:32px;font-weight:700;color:var(--label)}
-.row .ico{margin-left:12px;font-size:26px;line-height:1;transform:translateY(1px)}
+.logo{height:34px;width:auto;display:block}   /* drop-in slot for the wordmark */
 .row.gold{color:var(--gold)}
 
 /* highlight chip on the headline number */
@@ -68,10 +68,11 @@ body.clear #table{background:transparent}
   <div class="cell head left">Platform</div>
   <div class="cell head val">Seller Fees</div>
 
-  <div class="cell row left">Misprint<span class="ico">⚙️</span></div>
+  <div class="cell row left">Misprint</div>
+  <!-- swap the line above for: <div class="cell row left"><img class="logo" src="misprint-logo.svg" alt="Misprint"></div> -->
   <div class="cell row val gold"><span class="chip">5-7%</span></div>
 
-  <div class="cell row left">Other Card Marketplaces<span class="ico">🔍</span></div>
+  <div class="cell row left">Other Card Marketplaces</div>
   <div class="cell row val">10-15%</div>
 
   <div class="cell row left last">General Auction Sites</div>

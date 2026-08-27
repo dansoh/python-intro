@@ -10,7 +10,7 @@ Drop straight into an editor.
 | `seller-fees-dark.png` | opaque `#1D2634` fill |
 | `seller-fees-glass.png` | `rgba(23,31,44,.82)` fill — reads over busy footage |
 
-All three are 3600 × 930 (1200 × 310 CSS at 3×), 8-bit RGBA, no colour profile.
+All three are 2520 × 930 (840 × 310 CSS at 3×), 8-bit RGBA, no colour profile.
 
 ## If an editor flattens the alpha
 
@@ -26,6 +26,9 @@ editors treat as true overlay footage:
 | `seller-fees-overlay.mov` | QuickTime Animation (RLE), lossless RGBA, ~4.4 MB, 6 s |
 
 Regenerate with `./encode-alpha-video.sh [source.png] [seconds]`.
+
+The Misprint row has a `.logo` slot — swap the text cell for the commented-out
+`<img class="logo">` line and point it at the wordmark.
 
 Grid rules are 2px (`--rule`) so they survive being scaled down in a
 timeline, and the headline number sits in a gold `.chip` box.

@@ -10,7 +10,22 @@ Drop straight into an editor.
 | `seller-fees-dark.png` | opaque `#1D2634` fill |
 | `seller-fees-glass.png` | `rgba(23,31,44,.82)` fill — reads over busy footage |
 
-All three are 3600 × 930 (1200 × 310 CSS at 3×).
+All three are 3600 × 930 (1200 × 310 CSS at 3×), 8-bit RGBA, no colour profile.
+
+## If an editor flattens the alpha
+
+Some editors composite an imported still against black instead of honouring
+its alpha — the rounded corners fill in and it reads as a plain rectangle.
+Drop the image on an *overlay* track rather than the main/background track
+first; if that doesn't fix it, use one of the alpha video versions, which
+editors treat as true overlay footage:
+
+| File | Notes |
+| --- | --- |
+| `seller-fees-overlay.webm` | VP9 + alpha, lossless, ~210 KB, 6 s |
+| `seller-fees-overlay.mov` | QuickTime Animation (RLE), lossless RGBA, ~4.4 MB, 6 s |
+
+Regenerate with `./encode-alpha-video.sh [source.png] [seconds]`.
 
 `seller-fees-table.html` is the source. Edit the copy there, then
 `node render.js` to re-export all three. Body class picks the fill:

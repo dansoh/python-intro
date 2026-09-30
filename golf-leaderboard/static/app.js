@@ -250,20 +250,21 @@
     }
     if (!["board", "play", "join", "admin", "tv"].includes(view)) view = "board";
     if (view === "play" && !S.devicePlayers.length) view = "join";
+    if (view === "join" && S.devicePlayers.length) view = "play"; // one player per phone
     const changed = view !== S.view;
     S.view = view;
     document.body.classList.toggle("is-tv", view === "tv");
     document.querySelectorAll(".view").forEach((el) => { el.hidden = el.id !== `view-${view}`; });
     document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
     if (changed) window.scrollTo(0, 0);
+    if (S.state) renderChrome();
     renderView(true);
   }
 
+  // Each phone scores for one player: joining or opening a host's phone link makes this phone that player.
   function claimPlayer(id, token) {
-    if (!S.devicePlayers.some((d) => d.id === id)) {
-      S.devicePlayers.push({ id, token });
-      store.set("lb.players", S.devicePlayers);
-    }
+    S.devicePlayers = [{ id, token }];
+    store.set("lb.players", S.devicePlayers);
     setActive(id);
   }
 
@@ -280,7 +281,7 @@
     $("#tournament-subtitle").textContent = t.subtitle || "Live Tournament Scoring";
     document.title = `${t.name} · Leaderboard`;
     const joinTab = $('.tabs a[data-view="join"]');
-    joinTab.textContent = S.devicePlayers.length ? "Add Player" : "Join";
+    joinTab.hidden = S.devicePlayers.length > 0;
     renderLive();
   }
 
@@ -597,7 +598,6 @@
           if (!pl) return "";
           return `<button type="button" role="tab" class="chip" data-player="${pl.id}" aria-selected="${pl.id === p.id}">${esc(pl.name)}</button>`;
         }).join("")}
-        <a class="chip chip-add" href="#/join">+ Add</a>
       </div>` : "";
 
     // One tap per score: eagle through triple, plus "More" for anything higher (each tap adds a stroke).
@@ -619,7 +619,6 @@
             <p class="eyebrow">Playing as</p>
             <h2 class="play-name">${esc(p.name)}${hcp(p) != null ? ` <span class="hcp">HCP ${p.handicap}</span>` : ""}</h2>
           </div>
-          ${S.devicePlayers.length === 1 ? `<a class="link-small" href="#/join">Score for your group</a>` : ""}
         </div>
 
         <div class="stat-row">
@@ -750,22 +749,17 @@
     const el = $("#view-join");
     if (!entering && el.querySelector(".join")) return; // don't clobber typing on live updates
     const t = S.state.tournament;
-    const onDevice = S.devicePlayers
-      .map((d) => S.state.players.find((p) => p.id === d.id))
-      .filter(Boolean);
     el.innerHTML = `
       <div class="join">
         <div class="join-hero">
           <p class="eyebrow">${esc(t.name)}</p>
-          <h2>${onDevice.length ? "Add another player" : "Join the field"}</h2>
-          <p>${onDevice.length
-            ? "Keeping score for your group? Add each player here and switch between them on the My Round page."
-            : "Put your name on the board. You'll post your own scores hole by hole and everyone sees them live."}</p>
+          <h2>Join the field</h2>
+          <p>Put your name on the board. You'll post your own scores hole by hole from this phone, and everyone sees them live.</p>
         </div>
         ${t.locked ? `<p class="locked-note">Registration is closed. The host has locked the leaderboard.</p>` : `
         <form class="form" id="join-form" novalidate>
           <label class="field">
-            <span>Player name <em>*</em></span>
+            <span>Your name <em>*</em></span>
             <input name="name" autocomplete="name" maxlength="32" required placeholder="e.g. Bobby Jones">
           </label>
           ${t.handicaps ? `<label class="field">
@@ -773,16 +767,10 @@
             <input name="handicap" inputmode="decimal" placeholder="e.g. 12.4">
           </label>` : ""}
           <p class="form-error" id="join-error" role="alert"></p>
-          <button class="btn btn-gold btn-block" type="submit">${onDevice.length ? "Add player" : "Tee it up"}</button>
+          <button class="btn btn-gold btn-block" type="submit">Tee it up</button>
         </form>`}
-        ${onDevice.length ? `
-          <div class="on-device">
-            <h3 class="section-title">On this phone</h3>
-            <ul>${onDevice.map((p) => `<li><span>${esc(p.name)}</span><a class="link-small" href="#/play" data-go="${p.id}">Score</a></li>`).join("")}</ul>
-          </div>` : ""}
       </div>`;
 
-    el.querySelectorAll("[data-go]").forEach((a) => a.addEventListener("click", () => setActive(a.dataset.go)));
     const form = $("#join-form", el);
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();

@@ -537,7 +537,6 @@ a { color: var(--gold); }
   text-decoration: none;
 }
 .chip[aria-selected="true"] { background: var(--gold); color: var(--green-950); border-color: var(--gold); }
-.chip-add { color: var(--gold); border-style: dashed; }
 .play-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .play-name { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 1.8rem; color: var(--cream); }
 .play-name .hcp { color: var(--on-green-soft); background: rgba(255, 255, 255, 0.08); vertical-align: 4px; }
@@ -684,8 +683,6 @@ a { color: var(--gold); }
 .join-hero p { margin: 0; color: var(--on-green-soft); line-height: 1.55; }
 .join .form { padding: 20px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--panel-line); box-shadow: var(--shadow); }
 .join .btn-block { min-height: 52px; font-size: 0.9rem; }
-.on-device ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.on-device li { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 10px; background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.06); }
 
 /* ---------- admin ---------- */
 .admin-login { max-width: 400px; margin: 20px auto; }

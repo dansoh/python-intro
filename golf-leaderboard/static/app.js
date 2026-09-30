@@ -723,7 +723,7 @@
       if (score == null) toast(`Hole ${h + 1} cleared`);
       else {
         const d = score - par;
-        const cheer = score === 1 ? "Ace! Drinks are on you." : d <= -2 ? "Eagle! Take a bow." : d === -1 ? "Birdie. Nice." : d === 0 ? "Solid par." : d === 1 ? "Bogey. Shake it off." : "On to the next one.";
+        const cheer = score === 1 ? "Drinks are on you." : d <= -2 ? "Take a bow." : d === -1 ? "Nice one." : d === 0 ? "Solid." : d === 1 ? "Shake it off." : "On to the next one.";
         toast(`${resultName(score, par)} on ${h + 1}. ${cheer}`, d < 0 ? "good" : "");
       }
       S.play.draft = null;
@@ -1186,7 +1186,7 @@
         <div class="tv-body">
           <table class="lb tv-lb">
             <thead>
-              <tr><th class="c-pos">Pos</th><th class="c-player">Player</th><th class="c-topar">Par</th><th class="c-thru">Thru</th>
+              <tr><th class="c-pos">Pos</th><th class="c-player">Player</th><th class="c-topar">To Par</th><th class="c-thru">Thru</th>
                 ${holeHeads(0, 18)}<th class="c-tot">${mode === "net" ? "Net" : "Tot"}</th></tr>
             </thead>
             <tbody>

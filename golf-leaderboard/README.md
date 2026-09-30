@@ -67,8 +67,8 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
 - **Live feed**: "Jordan birdied No. 7" as it happens.
 - **My Round**: big thumb-friendly score entry with + / - and one-tap
   birdie/par/bogey buttons, optional putts, handicap stroke hints per hole,
-  running position and to-par. Each phone scores for the one player who joined
-  on it; nobody can post scores for anyone else.
+  running position and to-par. A scorekeeper can add up to 4 players on one
+  phone and switch between them; only that phone can post those players' scores.
 - **Clubhouse TV mode** (`#/tv`): full-screen board for a TV, pages through
   large fields automatically, with a join QR code.
 - **Any length of round**: 9, 18, 27 or 36 holes, set in Admin > Course. For a

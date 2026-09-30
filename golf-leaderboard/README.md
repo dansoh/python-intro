@@ -37,6 +37,22 @@ The server has to be reachable from players' phones:
   command `python3 server.py`; the server reads `PORT` from the environment. Use a
   persistent disk for `GOLF_DATA_DIR` if the host wipes files on restart.
 
+### Fly.io (golf.dohduo.gg)
+
+`fly.toml` and `Dockerfile` are included. From this directory:
+
+```bash
+fly launch --copy-config --no-deploy        # first time; pick a new app name if dohduo-golf is taken
+fly volumes create golf_data --size 1 --region iad   # same region as primary_region in fly.toml
+fly secrets set GOLF_ADMIN_PIN=4321
+fly deploy --ha=false                       # one machine: scores live in that server
+fly certs add golf.dohduo.gg                # prints the DNS records to create
+```
+
+Then add the DNS record `fly certs add` shows (usually a CNAME from `golf` to
+`<app>.fly.dev`). If the domain is on Cloudflare, leave the record DNS-only
+(grey cloud) until the certificate is issued. Check with `fly certs show golf.dohduo.gg`.
+
 The Admin page shows a QR code for the site. Print it or put it on the first tee.
 
 ## Features

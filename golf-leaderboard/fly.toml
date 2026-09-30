@@ -1,0 +1,32 @@
+# Fly.io config for golf.dohduo.gg. Deploy from this directory:
+#   fly launch --copy-config --no-deploy   (first time only; keeps this file)
+#   fly volumes create golf_data --size 1 --region <region>
+#   fly secrets set GOLF_ADMIN_PIN=<your pin>
+#   fly deploy --ha=false
+app = "dohduo-golf"
+primary_region = "iad"  # match the region your play.dohduo.gg app uses
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  GOLF_DATA_DIR = "/data"
+
+# Scores are saved here so they survive restarts and deploys.
+[mounts]
+  source = "golf_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep exactly one machine awake: scores live in that one server, and live
+  # updates stream from it. Stopping it would drop everyone's connection.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

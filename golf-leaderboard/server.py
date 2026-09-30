@@ -25,7 +25,7 @@ STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = Path(os.environ.get("GOLF_DATA_DIR", BASE_DIR / "data"))
 DATA_FILE = DATA_DIR / "tournament.json"
 
-HOLES = 18
+HOLE_COUNTS = (9, 18, 27, 36)  # the course length is set by how many pars the host enters
 DEFAULT_PARS = [4, 4, 4, 3, 5, 4, 3, 4, 5, 4, 3, 5, 4, 4, 5, 4, 3, 4]
 DEFAULT_STROKE_INDEX = [7, 3, 11, 15, 1, 9, 17, 5, 13, 8, 16, 2, 10, 4, 14, 6, 18, 12]
 MAX_EVENTS = 40
@@ -146,12 +146,16 @@ def clean_handicap(value):
     return hcp
 
 
-def clean_hole(value):
+def hole_count(state):
+    return len(state["tournament"]["pars"])
+
+
+def clean_hole(value, holes):
     try:
         hole = int(value)
     except (TypeError, ValueError):
         raise ApiError(HTTPStatus.BAD_REQUEST, "Invalid hole.")
-    if not 0 <= hole < HOLES:
+    if not 0 <= hole < holes:
         raise ApiError(HTTPStatus.BAD_REQUEST, "Invalid hole.")
     return hole
 
@@ -186,8 +190,8 @@ def make_player(state, name, handicap):
         "id": secrets.token_hex(6),
         "name": name,
         "handicap": handicap,
-        "scores": [None] * HOLES,
-        "putts": [None] * HOLES,
+        "scores": [None] * hole_count(state),
+        "putts": [None] * hole_count(state),
         "joinedAt": now_ms(),
         "updatedAt": now_ms(),
     }
@@ -237,11 +241,12 @@ def api_join(body):
 def api_score(body):
     player_id = str(body.get("playerId", ""))
     token = str(body.get("token", ""))
-    hole = clean_hole(body.get("hole"))
+    raw_hole = body.get("hole")
     score = clean_score(body.get("score"))
     putts = clean_score(body.get("putts"), low=0, high=10, label="Putts")
 
     def fn(state, sec):
+        hole = clean_hole(raw_hole, hole_count(state))
         expected = sec["playerTokens"].get(player_id)
         if not expected or not secrets.compare_digest(expected, token):
             raise ApiError(HTTPStatus.FORBIDDEN, "This device can't post scores for that player.")
@@ -312,13 +317,13 @@ def api_admin(body):
     elif action == "setScores":
         # changes: [{playerId, hole, score}] - bulk edit from the admin grid.
         changes = body.get("changes") or []
-        if not isinstance(changes, list) or len(changes) > HOLES * 200:
+        if not isinstance(changes, list) or len(changes) > 36 * 200 or not all(isinstance(c, dict) for c in changes):
             raise ApiError(HTTPStatus.BAD_REQUEST, "Invalid changes.")
-        parsed = [(str(c.get("playerId", "")), clean_hole(c.get("hole")), clean_score(c.get("score")))
-                  for c in changes]
+        parsed = [(str(c.get("playerId", "")), c.get("hole"), clean_score(c.get("score"))) for c in changes]
 
         def fn(state, sec):
-            for player_id, hole, score in parsed:
+            for player_id, raw_hole, score in parsed:
+                hole = clean_hole(raw_hole, hole_count(state))
                 player = find_player(state, player_id)
                 putts = player["putts"][hole]
                 set_hole(state, player, hole, score, putts)
@@ -327,18 +332,27 @@ def api_admin(body):
     elif action == "setCourse":
         pars = body.get("pars")
         stroke_index = body.get("strokeIndex")
-        if not isinstance(pars, list) or len(pars) != HOLES:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "Need 18 hole pars.")
+        if not isinstance(pars, list) or len(pars) not in HOLE_COUNTS:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "The course must be 9, 18, 27 or 36 holes.")
+        holes = len(pars)
         pars = [clean_score(p, low=3, high=6, label="Par") for p in pars]
         if None in pars:
             raise ApiError(HTTPStatus.BAD_REQUEST, "Every hole needs a par.")
-        if not isinstance(stroke_index, list) or sorted(int(s) for s in stroke_index) != list(range(1, HOLES + 1)):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "Stroke index must use each number 1-18 exactly once.")
-        stroke_index = [int(s) for s in stroke_index]
+        try:
+            stroke_index = [int(x) for x in stroke_index]
+        except (TypeError, ValueError):
+            stroke_index = None
+        if not stroke_index or sorted(stroke_index) != list(range(1, holes + 1)):
+            raise ApiError(HTTPStatus.BAD_REQUEST, f"Stroke index must use each number 1-{holes} exactly once.")
 
         def fn(state, sec):
             state["tournament"]["pars"] = pars
             state["tournament"]["strokeIndex"] = stroke_index
+            # Changing the course length keeps scores on holes that still exist.
+            for p in state["players"]:
+                for key in ("scores", "putts"):
+                    p[key] = (p[key] + [None] * holes)[:holes]
+            state["events"] = [e for e in state["events"] if e["hole"] < holes]
             return {"ok": True}
 
     elif action == "setSettings":
@@ -354,8 +368,8 @@ def api_admin(body):
     elif action == "resetScores":
         def fn(state, sec):
             for p in state["players"]:
-                p["scores"] = [None] * HOLES
-                p["putts"] = [None] * HOLES
+                p["scores"] = [None] * hole_count(state)
+                p["putts"] = [None] * hole_count(state)
             state["events"] = []
             return {"ok": True}
 

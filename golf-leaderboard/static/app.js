@@ -4,7 +4,10 @@
 (() => {
   "use strict";
 
-  const HOLES = 18;
+  // The course is 9, 18, 27 or 36 holes: however many pars the host has set. Holes are grouped in nines.
+  const NINE_LABELS = ["Out", "In", "3rd", "4th"];
+  const holeCount = () => S.state.tournament.pars.length;
+  const nineCount = () => holeCount() / 9;
 
   // ---------- storage (never trusted to exist) ----------
   const store = {
@@ -34,7 +37,7 @@
     pin: store.session.get("lb.pin"),
     play: { hole: null, draft: null, draftPutts: undefined, forPlayer: null },
     adminDirty: new Map(), // "playerId:hole" -> value
-    adminHalf: "front",    // which nine the score grid shows on phones
+    adminNine: 0,          // which nine the score grid shows on phones
     tvPage: 0,
   };
 
@@ -85,11 +88,12 @@
   }
 
   // Handicap strokes received on a hole, allocated by stroke index.
-  function strokesOn(handicap, si) {
+  // A handicap is an 18-hole number, so it's scaled to the course length (27 holes = 1.5x the strokes).
+  function strokesOn(handicap, si, holes) {
     if (handicap == null) return 0;
-    const h = Math.round(handicap);
-    if (h >= 0) return Math.floor(h / HOLES) + (si <= h % HOLES ? 1 : 0);
-    return si > HOLES + h ? -1 : 0; // plus handicaps give strokes back on the easiest holes
+    const h = Math.round(handicap * holes / 18);
+    if (h >= 0) return Math.floor(h / holes) + (si <= h % holes ? 1 : 0);
+    return si > holes + h ? -1 : 0; // plus handicaps give strokes back on the easiest holes
   }
 
   // Handicaps only count when the host turns on handicap scoring; otherwise they're ignored everywhere.
@@ -101,21 +105,23 @@
   // ---------- scoring ----------
   function playerStats(p, t) {
     const { pars, strokeIndex } = t;
-    let thru = 0, gross = 0, net = 0, toParG = 0, toParN = 0, out = 0, inn = 0, outN = 0, inN = 0, putts = 0, puttHoles = 0;
+    let thru = 0, gross = 0, net = 0, toParG = 0, toParN = 0, putts = 0, puttHoles = 0;
     let birdies = 0;
+    const nines = Array.from({ length: pars.length / 9 }, () => null); // strokes per nine, null until one is played
     p.scores.forEach((s, i) => {
       if (s == null) return;
       thru++;
       gross += s;
-      const strokes = strokesOn(hcp(p), strokeIndex[i]);
+      const strokes = strokesOn(hcp(p), strokeIndex[i], pars.length);
       net += s - strokes;
       toParG += s - pars[i];
       toParN += s - strokes - pars[i];
-      if (i < 9) { out += s; outN++; } else { inn += s; inN++; }
+      const k = Math.floor(i / 9);
+      nines[k] = (nines[k] ?? 0) + s;
       if (s - pars[i] <= -1) birdies++;
       if (p.putts[i] != null) { putts += p.putts[i]; puttHoles++; }
     });
-    return { thru, gross, net, toParG, toParN, out: outN ? out : null, in: inN ? inn : null, putts: puttHoles ? putts : null, birdies };
+    return { thru, gross, net, toParG, toParN, nines, putts: puttHoles ? putts : null, birdies };
   }
 
   function computeBoard(state, mode) {
@@ -142,7 +148,7 @@
 
   function thruLabel(r) {
     if (!r.thru) return "–";
-    if (r.thru === HOLES) return "F";
+    if (r.thru === r.p.scores.length) return "F";
     return String(r.thru);
   }
 
@@ -340,22 +346,20 @@
             </div>` : ""}
         </div>
         <div class="board-scroll">
-          <table class="lb">
+          <table class="lb${holeCount() > 18 ? " many" : ""}">
             <thead>
               <tr>
                 <th class="c-pos" scope="col">Pos</th>
                 <th class="c-player" scope="col">Player</th>
                 <th class="c-topar" scope="col">To Par</th>
                 <th class="c-thru" scope="col">Thru</th>
-                ${holeHeads(0, 9)}<th class="hc c-sub" scope="col">Out</th>
-                ${holeHeads(9, 18)}<th class="hc c-sub" scope="col">In</th>
+                ${ninesHtml((k) => `${holeHeads(9 * k, 9 * k + 9)}<th class="hc c-sub" scope="col">${NINE_LABELS[k]}</th>`)}
                 <th class="c-tot" scope="col">${mode === "net" ? "Net" : "Tot"}</th>
                 <th class="c-chev" aria-hidden="true"></th>
               </tr>
               <tr class="par-row">
                 <td></td><td class="c-player">Par</td><td></td><td></td>
-                ${t.pars.slice(0, 9).map((p) => `<td class="hc">${p}</td>`).join("")}<td class="hc c-sub">${sum(t.pars.slice(0, 9))}</td>
-                ${t.pars.slice(9).map((p) => `<td class="hc">${p}</td>`).join("")}<td class="hc c-sub">${sum(t.pars.slice(9))}</td>
+                ${ninesHtml((k) => { const np = t.pars.slice(9 * k, 9 * k + 9); return `${np.map((p) => `<td class="hc">${p}</td>`).join("")}<td class="hc c-sub">${sum(np)}</td>`; })}
                 <td class="c-tot">${coursePar}</td><td></td>
               </tr>
             </thead>
@@ -389,9 +393,11 @@
     S.flash.clear();
   }
 
+  const ninesHtml = (fn) => Array.from({ length: nineCount() }, (_, k) => fn(k)).join("");
+
   function holeHeads(a, b) {
     let h = "";
-    for (let i = a; i < b; i++) h += `<th class="hc${i === 8 ? " nine" : ""}" scope="col">${i + 1}</th>`;
+    for (let i = a; i < b; i++) h += `<th class="hc${i % 9 === 8 && i < holeCount() - 1 ? " nine" : ""}" scope="col">${i + 1}</th>`;
     return h;
   }
 
@@ -411,9 +417,9 @@
       }
       return h;
     };
-    const cols = 4 + 9 + 1 + 9 + 1 + 2;
+    const cols = 4 + holeCount() + nineCount() + 2;
     return `
-      <tr class="row${open ? " open" : ""}${S.flash.has(p.id) ? " flash" : ""}${r.thru === HOLES ? " finished" : ""}" data-id="${p.id}" tabindex="0" aria-expanded="${open}">
+      <tr class="row${open ? " open" : ""}${S.flash.has(p.id) ? " flash" : ""}${r.thru === holeCount() ? " finished" : ""}" data-id="${p.id}" tabindex="0" aria-expanded="${open}">
         <td class="c-pos">${esc(r.pos)}${moveHtml}</td>
         <td class="c-player">
           <span class="pname">${esc(p.name)}</span>${mine ? '<span class="you">You</span>' : ""}
@@ -421,8 +427,7 @@
         </td>
         <td class="c-topar"><span class="${toParClass(r.toPar, r.thru > 0)}">${fmtToPar(r.toPar, r.thru > 0)}</span></td>
         <td class="c-thru">${thruLabel(r)}</td>
-        ${cells(0, 9)}<td class="hc c-sub">${r.out ?? ""}</td>
-        ${cells(9, 18)}<td class="hc c-sub">${r.in ?? ""}</td>
+        ${ninesHtml((k) => `${cells(9 * k, 9 * k + 9)}<td class="hc c-sub">${r.nines[k] ?? ""}</td>`)}
         <td class="c-tot">${r.thru ? r.total : ""}</td>
         <td class="c-chev" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></td>
       </tr>
@@ -438,7 +443,7 @@
         holes.push(`<th>${i + 1}</th>`);
         pars.push(`<td>${t.pars[i]}</td>`);
         const s = p.scores[i];
-        const dots = strokesOn(hcp(p), t.strokeIndex[i]);
+        const dots = strokesOn(hcp(p), t.strokeIndex[i], t.pars.length);
         scores.push(`<td>${s == null ? '<span class="dash"></span>' : `<span class="sc ${scoreClass(s, t.pars[i])}">${s}</span>`}${dots > 0 ? `<i class="dots" title="${dots} handicap stroke${dots > 1 ? "s" : ""}">${"•".repeat(dots)}</i>` : ""}</td>`);
         putts.push(`<td>${p.putts[i] ?? ""}</td>`);
       }
@@ -462,7 +467,7 @@
           <span><b>${st.birdies}</b> birdie${st.birdies === 1 ? "" : "s"} or better</span>
           ${st.putts != null ? `<span><b>${st.putts}</b> putts</span>` : ""}
         </div>
-        <div class="card-scroll">${half(0, 9, "Out")}${half(9, 18, "In")}</div>
+        <div class="card-scroll">${ninesHtml((k) => half(9 * k, 9 * k + 9, NINE_LABELS[k]))}</div>
       </div>`;
   }
 
@@ -470,9 +475,9 @@
     const t = state.tournament;
     const leaders = rows.filter((r) => r.rank === 1);
     const started = rows.filter((r) => r.thru);
-    const finished = rows.filter((r) => r.thru === HOLES).length;
+    const finished = rows.filter((r) => r.thru === holeCount()).length;
     let birdies = 0, eagles = 0;
-    const holeDiff = Array.from({ length: HOLES }, () => ({ total: 0, n: 0 }));
+    const holeDiff = Array.from({ length: holeCount() }, () => ({ total: 0, n: 0 }));
     for (const p of state.players) {
       p.scores.forEach((s, i) => {
         if (s == null) return;
@@ -557,10 +562,10 @@
   function firstOpenHole(p) {
     let last = -1;
     p.scores.forEach((s, i) => { if (s != null) last = i; });
-    const next = (last + 1) % HOLES;
+    const next = (last + 1) % holeCount();
     if (p.scores[next] == null) return next;
     const any = p.scores.findIndex((s) => s == null);
-    return any === -1 ? HOLES - 1 : any;
+    return any === -1 ? holeCount() - 1 : any;
   }
 
   function renderPlay() {
@@ -582,7 +587,7 @@
 
     const board = computeBoard(S.state, effectiveMode());
     const me = board.find((r) => r.p.id === p.id);
-    const strokes = strokesOn(hcp(p), t.strokeIndex[h]);
+    const strokes = strokesOn(hcp(p), t.strokeIndex[h], t.pars.length);
     const locked = t.locked;
 
     const chips = S.devicePlayers.length > 1 ? `
@@ -623,7 +628,7 @@
           <div class="stat"><span class="stat-label">Thru</span><span class="stat-val">${thruLabel(me)}</span></div>
         </div>
 
-        <div class="hole-strip" role="tablist" aria-label="Holes">
+        <div class="hole-strip" role="tablist" aria-label="Holes" style="--holes: ${t.pars.length}">
           ${t.pars.map((hp, i) => `<button type="button" role="tab" class="hs ${scoreClass(p.scores[i], hp).replace("sc-", "r-")}${i === h ? " current" : ""}${p.scores[i] != null ? " done" : ""}" data-hole="${i}" aria-selected="${i === h}" aria-label="Hole ${i + 1}${p.scores[i] != null ? `, scored ${p.scores[i]}` : ""}">${i + 1}</button>`).join("")}
         </div>
 
@@ -655,13 +660,13 @@
           <div class="play-actions">
             <button type="button" class="btn btn-ghost" data-nav="-1" ${h === 0 ? "disabled" : ""}>← Prev</button>
             <button type="button" class="btn btn-gold btn-save" data-save ${locked ? "disabled" : ""}>
-              ${dirty ? (h === HOLES - 1 ? "Save & finish" : "Save & next") : h === HOLES - 1 ? "Saved" : "Next →"}
+              ${dirty ? (h === holeCount() - 1 ? "Save & finish" : "Save & next") : h === holeCount() - 1 ? "Saved" : "Next →"}
             </button>
           </div>
           ${saved != null && !locked ? `<button type="button" class="link-small clear-hole" data-clear>Clear this hole</button>` : ""}
         </div>
 
-        ${me.thru === HOLES ? `<div class="done-banner"><b>Round complete.</b> You finished at <span class="${toParClass(me.toPar)}">${fmtToPar(me.toPar)}</span>. Head to the clubhouse.</div>` : ""}
+        ${me.thru === holeCount() ? `<div class="done-banner"><b>Round complete.</b> You finished at <span class="${toParClass(me.toPar)}">${fmtToPar(me.toPar)}</span>. Head to the clubhouse.</div>` : ""}
 
         <div class="play-card">
           <h3 class="section-title">Your scorecard</h3>
@@ -688,7 +693,7 @@
     }));
     el.querySelector("[data-nav]")?.addEventListener("click", () => gotoHole(h - 1));
     el.querySelector("[data-save]")?.addEventListener("click", async (e) => {
-      if (!dirty) { if (h < HOLES - 1) gotoHole(h + 1); return; }
+      if (!dirty) { if (h < holeCount() - 1) gotoHole(h + 1); return; }
       await saveHole(p, h, value, putts, e.currentTarget);
     });
     el.querySelector("[data-clear]")?.addEventListener("click", async (e) => {
@@ -705,7 +710,7 @@
   }
 
   function gotoHole(i) {
-    if (i < 0 || i >= HOLES) return;
+    if (i < 0 || i >= holeCount()) return;
     S.play.hole = i;
     S.play.draft = null;
     S.play.draftPutts = undefined;
@@ -728,7 +733,7 @@
       }
       S.play.draft = null;
       S.play.draftPutts = undefined;
-      if (score != null && h < HOLES - 1) S.play.hole = h + 1;
+      if (score != null && h < holeCount() - 1) S.play.hole = h + 1;
       // The live stream will re-render with the saved score; render now for snappiness too.
       const player = S.state.players.find((x) => x.id === p.id);
       if (player) { player.scores[h] = score; player.putts[h] = score == null ? null : putts; }
@@ -1027,23 +1032,23 @@
       return;
     }
     const t = S.state.tournament;
+    if (S.adminNine >= nineCount()) S.adminNine = 0;
     const players = [...S.state.players].sort((a, b) => a.name.localeCompare(b.name));
     el.innerHTML = `
       <div class="panel-bar">
         <h3 class="section-title">Edit scores</h3>
         ${players.length ? `<div class="seg half-toggle" role="group" aria-label="Holes shown">
-          <button type="button" data-half="front" aria-pressed="${S.adminHalf === "front"}">Front 9</button>
-          <button type="button" data-half="back" aria-pressed="${S.adminHalf === "back"}">Back 9</button>
+          ${ninesHtml((k) => `<button type="button" data-nine="${k}" aria-pressed="${S.adminNine === k}">${9 * k + 1}–${9 * k + 9}</button>`)}
         </div>` : ""}
       </div>
       ${players.length ? `
-      <div class="grid-scroll" data-half="${S.adminHalf}">
+      <div class="grid-scroll" data-nine="${S.adminNine}">
         <table class="grid">
-          <thead><tr><th class="g-name">Player</th>${t.pars.map((_, i) => `<th class="${i < 9 ? "h-f" : "h-b"}">${i + 1}</th>`).join("")}</tr>
-          <tr class="par-row"><td class="g-name">Par</td>${t.pars.map((p, i) => `<td class="${i < 9 ? "h-f" : "h-b"}">${p}</td>`).join("")}</tr></thead>
+          <thead><tr><th class="g-name">Player</th>${t.pars.map((_, i) => `<th class="n${Math.floor(i / 9)}">${i + 1}</th>`).join("")}</tr>
+          <tr class="par-row"><td class="g-name">Par</td>${t.pars.map((p, i) => `<td class="n${Math.floor(i / 9)}">${p}</td>`).join("")}</tr></thead>
           <tbody>
             ${players.map((p) => `<tr><th class="g-name" scope="row">${esc(p.name)}</th>${p.scores.map((s, i) =>
-              `<td class="${i < 9 ? "h-f" : "h-b"}"><input class="gcell" inputmode="numeric" maxlength="2" data-pid="${p.id}" data-hole="${i}" value="${s ?? ""}" aria-label="${esc(p.name)} hole ${i + 1}"></td>`).join("")}</tr>`).join("")}
+              `<td class="n${Math.floor(i / 9)}"><input class="gcell" inputmode="numeric" maxlength="2" data-pid="${p.id}" data-hole="${i}" value="${s ?? ""}" aria-label="${esc(p.name)} hole ${i + 1}"></td>`).join("")}</tr>`).join("")}
           </tbody>
         </table>
       </div>
@@ -1052,10 +1057,10 @@
         <button type="button" class="btn btn-gold" id="grid-save" disabled>Save scores</button>
       </div>` : `<p class="muted">Add players to edit their scores.</p>`}`;
 
-    el.querySelectorAll("button[data-half]").forEach((btn) => btn.addEventListener("click", () => {
-      S.adminHalf = btn.dataset.half;
-      el.querySelector(".grid-scroll").dataset.half = S.adminHalf;
-      el.querySelectorAll("button[data-half]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    el.querySelectorAll("button[data-nine]").forEach((btn) => btn.addEventListener("click", () => {
+      S.adminNine = +btn.dataset.nine;
+      el.querySelector(".grid-scroll").dataset.nine = S.adminNine;
+      el.querySelectorAll("button[data-nine]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
     }));
     el.querySelectorAll(".gcell").forEach((inp) => {
       inp.addEventListener("input", () => {
@@ -1076,7 +1081,7 @@
         if (!m) return;
         const cells = [...el.querySelectorAll(".gcell")];
         const idx = cells.indexOf(inp);
-        const target = cells[idx + m[0] * HOLES + m[1]];
+        const target = cells[idx + m[0] * holeCount() + m[1]];
         if (target) { e.preventDefault(); target.focus(); target.select(); }
       });
       inp.addEventListener("focus", () => inp.select());
@@ -1096,39 +1101,80 @@
     });
   }
 
-  function renderCourse() {
+  // Default stroke index for a course of n holes: keeps the first nine's order of difficulty and
+  // spreads the hardest holes evenly across the nines.
+  function spreadIndex(n, si) {
+    const first = si.slice(0, 9);
+    const rank = first.map((v) => first.filter((x) => x < v).length); // 0 = hardest of the nine
+    const nines = n / 9;
+    return Array.from({ length: n }, (_, i) => rank[i % 9] * nines + Math.floor(i / 9) + 1);
+  }
+
+  function renderCourse(draft) {
     const t = S.state.tournament;
+    const pars = draft?.pars ?? t.pars;
+    const si = draft?.strokeIndex ?? t.strokeIndex;
+    const n = pars.length;
     const el = $("#panel-course");
     el.innerHTML = `
-      <h3 class="section-title">Course</h3>
-      <p class="muted">Pars set the scoring. Stroke index (1 = hardest hole) decides where handicap strokes fall for net scores.</p>
+      <div class="panel-bar">
+        <h3 class="section-title">Course</h3>
+        <div class="seg holes-toggle" role="group" aria-label="Number of holes">
+          ${[9, 18, 27, 36].map((c) => `<button type="button" data-holes="${c}" aria-pressed="${c === n}">${c}</button>`).join("")}
+        </div>
+      </div>
+      <p class="muted">${n} holes. Pars set the scoring. ${n > 18 ? "Holes past 18 start with the same pars as the first nine; change any that differ. " : ""}Stroke index (1 = hardest hole) is only used for handicap scoring.</p>
+      ${draft ? `<p class="locked-note">Not saved yet. Check the pars below, then tap Save course.</p>` : ""}
       <form id="course-form">
         <div class="grid-scroll">
           <table class="grid course">
-            <thead><tr><th class="g-name">Hole</th>${t.pars.map((_, i) => `<th>${i + 1}</th>`).join("")}<th>Tot</th></tr></thead>
+            <thead><tr><th class="g-name">Hole</th>${pars.map((_, i) => `<th>${i + 1}</th>`).join("")}<th>Tot</th></tr></thead>
             <tbody>
-              <tr><th class="g-name" scope="row">Par</th>${t.pars.map((p, i) => `<td><input class="gcell" name="par${i}" inputmode="numeric" maxlength="1" value="${p}" aria-label="Par hole ${i + 1}"></td>`).join("")}<td class="course-tot" id="par-total">${sum(t.pars)}</td></tr>
-              <tr><th class="g-name" scope="row">Index</th>${t.strokeIndex.map((s, i) => `<td><input class="gcell" name="si${i}" inputmode="numeric" maxlength="2" value="${s}" aria-label="Stroke index hole ${i + 1}"></td>`).join("")}<td></td></tr>
+              <tr><th class="g-name" scope="row">Par</th>${pars.map((p, i) => `<td><input class="gcell" name="par${i}" inputmode="numeric" maxlength="1" value="${p}" aria-label="Par hole ${i + 1}"></td>`).join("")}<td class="course-tot" id="par-total">${sum(pars)}</td></tr>
+              <tr><th class="g-name" scope="row">Index</th>${si.map((x, i) => `<td><input class="gcell" name="si${i}" inputmode="numeric" maxlength="2" value="${x}" aria-label="Stroke index hole ${i + 1}"></td>`).join("")}<td></td></tr>
             </tbody>
           </table>
         </div>
+        ${n > 9 ? `<button type="button" class="btn btn-ghost btn-sm copy-nine" id="copy-nine">Same 9 holes each loop: copy holes 1–9 to every nine</button>` : ""}
         <div class="grid-foot">
-          <span class="muted">Out ${sum(t.pars.slice(0, 9))} · In ${sum(t.pars.slice(9))}</span>
+          <span class="muted" id="nine-totals"></span>
           <button class="btn btn-gold" type="submit">Save course</button>
         </div>
       </form>`;
     const form = $("#course-form", el);
-    form.addEventListener("input", () => {
-      const pars = Array.from({ length: HOLES }, (_, i) => +form[`par${i}`].value || 0);
-      $("#par-total", el).textContent = sum(pars);
+    const read = (prefix) => Array.from({ length: n }, (_, i) => form[`${prefix}${i}`].value);
+    const totals = () => {
+      const ps = read("par").map((v) => +v || 0);
+      $("#par-total", el).textContent = sum(ps);
+      $("#nine-totals", el).textContent = Array.from({ length: n / 9 }, (_, k) => `${NINE_LABELS[k]} ${sum(ps.slice(9 * k, 9 * k + 9))}`).join(" · ");
+    };
+    totals();
+    form.addEventListener("input", totals);
+    // For a 9-hole course played several times: every nine gets the same pars and difficulty order.
+    $("#copy-nine", el)?.addEventListener("click", () => {
+      const first = read("par").slice(0, 9);
+      renderCourse({
+        pars: Array.from({ length: n }, (_, i) => first[i % 9]),
+        strokeIndex: spreadIndex(n, read("si").map(Number)),
+      });
     });
+    el.querySelectorAll("[data-holes]").forEach((b) => b.addEventListener("click", () => {
+      const c = +b.dataset.holes;
+      if (c === n) return;
+      const cur = read("par").map((v) => +v || 4);
+      renderCourse({
+        pars: Array.from({ length: c }, (_, i) => cur[i] ?? cur[i % cur.length]),
+        strokeIndex: c === t.pars.length ? t.strokeIndex : spreadIndex(c, read("si").map(Number)),
+      });
+    }));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const pars = Array.from({ length: HOLES }, (_, i) => form[`par${i}`].value);
-      const strokeIndex = Array.from({ length: HOLES }, (_, i) => form[`si${i}`].value);
+      const lost = S.state.players.filter((p) => p.scores.slice(n).some((x) => x != null)).length;
+      if (lost && !confirm(`Shortening the course to ${n} holes deletes scores past hole ${n} for ${lost} player${lost > 1 ? "s" : ""}. Continue?`)) return;
       try {
-        await adminApi("setCourse", { pars, strokeIndex });
-        toast("Course saved", "good");
+        await adminApi("setCourse", { pars: read("par"), strokeIndex: read("si") });
+        toast(`Course saved: ${n} holes`, "good");
+        renderCourse();
       } catch (ex) { adminError(ex); }
     });
   }
@@ -1187,7 +1233,7 @@
           <table class="lb tv-lb">
             <thead>
               <tr><th class="c-pos">Pos</th><th class="c-player">Player</th><th class="c-topar">To Par</th><th class="c-thru">Thru</th>
-                ${holeHeads(0, 18)}<th class="c-tot">${mode === "net" ? "Net" : "Tot"}</th></tr>
+                ${holeHeads(0, holeCount())}<th class="c-tot">${mode === "net" ? "Net" : "Tot"}</th></tr>
             </thead>
             <tbody>
               ${pageRows.map((r) => `
@@ -1196,7 +1242,7 @@
                   <td class="c-player"><span class="pname">${esc(r.p.name)}</span></td>
                   <td class="c-topar"><span class="${toParClass(r.toPar, r.thru > 0)}">${fmtToPar(r.toPar, r.thru > 0)}</span></td>
                   <td class="c-thru">${thruLabel(r)}</td>
-                  ${r.p.scores.map((s, i) => `<td class="hc${i === 8 ? " nine" : ""}">${s == null ? "" : `<span class="sc ${scoreClass(s, t.pars[i])}">${s}</span>`}</td>`).join("")}
+                  ${r.p.scores.map((s, i) => `<td class="hc${i % 9 === 8 && i < holeCount() - 1 ? " nine" : ""}">${s == null ? "" : `<span class="sc ${scoreClass(s, t.pars[i])}">${s}</span>`}</td>`).join("")}
                   <td class="c-tot">${r.thru ? r.total : ""}</td>
                 </tr>`).join("")}
             </tbody>

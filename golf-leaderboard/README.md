@@ -70,6 +70,9 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
   running position and to-par. One phone can keep score for a whole group.
 - **Clubhouse TV mode** (`#/tv`): full-screen board for a TV, pages through
   large fields automatically, with a join QR code.
+- **Any length of round**: 9, 18, 27 or 36 holes, set in Admin > Course. For a
+  9-hole course played several times, enter the 9 pars once and use "Same 9
+  holes each loop" to copy them to every nine.
 - **Admin**: add, edit and remove players, fix any score in a spreadsheet-style
   grid, set pars and stroke index, rename the event, lock the board when play
   is over, copy a "phone link" that lets a new device score for a player, and

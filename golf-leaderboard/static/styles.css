@@ -436,6 +436,13 @@ a { color: var(--gold); }
 .lb > tbody > tr.detail > td { height: auto; padding: 0 0 0 4px; background: #efe6c9; box-shadow: inset 4px 0 0 var(--gold), inset 0 6px 8px -6px rgba(22, 36, 27, 0.35); border-bottom: 1px solid var(--line-strong); }
 .board-hint { margin: 0; padding: 10px 16px; font-size: 0.75rem; color: var(--ink-soft); background: var(--paper-2); border-top: 1px solid var(--line); }
 
+/* 27+ holes: slimmer hole columns so a full round still fits a laptop screen. */
+.lb.many .hc { width: 26px; padding: 0 1px; font-size: 0.8rem; }
+.lb.many .c-sub { width: 34px; }
+.lb.many .c-player { min-width: 140px; }
+.lb.many .c-topar { width: 70px; }
+@media (max-width: 1279px) { .lb.many .hc { display: none; } .lb.many .c-player { min-width: 0; width: 100%; } }
+
 /* Narrow screens: the hole-by-hole columns move into the tap-to-expand scorecard. */
 @media (max-width: 1023px) {
   .lb .hc { display: none; }
@@ -543,7 +550,7 @@ a { color: var(--gold); }
 
 .hole-strip {
   display: grid;
-  grid-template-columns: repeat(18, minmax(34px, 1fr));
+  grid-template-columns: repeat(var(--holes, 18), minmax(34px, 1fr));
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -572,7 +579,7 @@ a { color: var(--gold); }
 .hs.done.r-double::after { width: 8px; margin-left: -4px; }
 .hs.current { outline: 2px solid var(--gold); outline-offset: 1px; color: var(--gold); }
 .hs.done.current { color: var(--ink); }
-@media (max-width: 480px) { .hole-strip { grid-template-columns: repeat(18, 38px); } }
+@media (max-width: 480px) { .hole-strip { grid-template-columns: repeat(var(--holes, 18), 38px); } }
 
 .hole-card {
   background: var(--panel);
@@ -731,10 +738,15 @@ a { color: var(--gold); }
 .panel-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .panel-bar .section-title { margin: 0; }
 .half-toggle { display: none; }
+.holes-toggle button { min-width: 44px; }
+.copy-nine { margin-top: 10px; }
 .half-toggle button { color: var(--on-green-soft); }
 @media (max-width: 760px) {
   .half-toggle { display: inline-flex; }
-  .grid-scroll[data-half="front"] .h-b, .grid-scroll[data-half="back"] .h-f { display: none; }
+  .grid-scroll[data-nine="0"] :is(.n1, .n2, .n3),
+  .grid-scroll[data-nine="1"] :is(.n0, .n2, .n3),
+  .grid-scroll[data-nine="2"] :is(.n0, .n1, .n3),
+  .grid-scroll[data-nine="3"] :is(.n0, .n1, .n2) { display: none; }
   .admin .panel { padding: 14px 12px; }
   .grid th, .grid td { padding: 3px 1px; }
   .grid .g-name { min-width: 0; max-width: 60px; padding-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
@@ -797,6 +809,7 @@ body.is-tv .main { max-width: none; padding: 24px 32px; }
 .tv-empty { text-align: center; padding: 60px; font-family: var(--serif); font-size: 1.5rem; color: var(--ink-soft); }
 .tv-foot { display: flex; justify-content: space-between; align-items: center; padding: 0 16px 8px; color: var(--on-green-soft); font-size: 1rem; }
 .tv-lb .nine { border-right: 3px solid var(--line-strong); }
+.tv-lb thead th.c-tot { background: var(--augusta); color: #fff; }
 .tv-foot a { text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {

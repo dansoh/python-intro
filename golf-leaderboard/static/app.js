@@ -391,7 +391,7 @@
 
   function holeHeads(a, b) {
     let h = "";
-    for (let i = a; i < b; i++) h += `<th class="hc" scope="col">${i + 1}</th>`;
+    for (let i = a; i < b; i++) h += `<th class="hc${i === 8 ? " nine" : ""}" scope="col">${i + 1}</th>`;
     return h;
   }
 
@@ -527,7 +527,7 @@
             const d = e.score - e.par;
             const cls = e.score === 1 || d <= -2 ? "ev-great" : d === -1 ? "ev-good" : d >= 2 ? "ev-bad" : "";
             return `<li class="${cls}">
-              <span class="sc ${scoreClass(e.score, e.par)}">${e.score}</span>
+              <span class="feed-mark"><span class="sc ${scoreClass(e.score, e.par)}">${e.score}</span></span>
               <span class="ev-text"><b>${esc(e.name)}</b> ${d === -1 ? "birdied" : d <= -2 || e.score === 1 ? `made ${resultName(e.score, e.par).toLowerCase()} on` : d === 0 ? "parred" : `made ${resultName(e.score, e.par).toLowerCase()} on`} <span class="nowrap">No. ${e.hole + 1}</span></span>
               <time data-ts="${e.ts}">${timeAgo(e.ts)}</time>
             </li>`;
@@ -1196,7 +1196,7 @@
                   <td class="c-player"><span class="pname">${esc(r.p.name)}</span></td>
                   <td class="c-topar"><span class="${toParClass(r.toPar, r.thru > 0)}">${fmtToPar(r.toPar, r.thru > 0)}</span></td>
                   <td class="c-thru">${thruLabel(r)}</td>
-                  ${r.p.scores.map((s, i) => `<td class="hc">${s == null ? "" : `<span class="sc ${scoreClass(s, t.pars[i])}">${s}</span>`}</td>`).join("")}
+                  ${r.p.scores.map((s, i) => `<td class="hc${i === 8 ? " nine" : ""}">${s == null ? "" : `<span class="sc ${scoreClass(s, t.pars[i])}">${s}</span>`}</td>`).join("")}
                   <td class="c-tot">${r.thru ? r.total : ""}</td>
                 </tr>`).join("")}
             </tbody>

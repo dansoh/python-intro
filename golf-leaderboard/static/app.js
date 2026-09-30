@@ -99,6 +99,7 @@
 
   // Handicaps only count when the host turns on handicap scoring; otherwise they're ignored everywhere.
   const handicapsOn = () => !!S.state?.tournament.handicaps;
+  const puttsOn = () => !!S.state?.tournament.putts; // host switch; off keeps score entry to one tap
   const hcp = (p) => (handicapsOn() ? p.handicap : null);
   const hasHandicaps = () => handicapsOn() && S.state.players.some((p) => p.handicap != null);
   const effectiveMode = () => (S.mode === "net" && hasHandicaps() ? "net" : "gross");
@@ -120,7 +121,7 @@
       const k = Math.floor(i / 9);
       nines[k] = (nines[k] ?? 0) + s;
       if (s - pars[i] <= -1) birdies++;
-      if (p.putts[i] != null) { putts += p.putts[i]; puttHoles++; }
+      if (puttsOn() && p.putts[i] != null) { putts += p.putts[i]; puttHoles++; }
     });
     return { thru, gross, net, toParG, toParN, nines, putts: puttHoles ? putts : null, birdies };
   }
@@ -442,7 +443,7 @@
     const st = r || playerStats(p, t);
     const half = (a, b, label) => {
       const holes = [], pars = [], scores = [], putts = [];
-      const showPutts = p.putts.some((x) => x != null);
+      const showPutts = puttsOn() && p.putts.some((x) => x != null);
       for (let i = a; i < b; i++) {
         holes.push(`<th>${i + 1}</th>`);
         pars.push(`<td>${t.pars[i]}</td>`);
@@ -587,7 +588,7 @@
     const value = S.play.draft ?? saved ?? par;
     const savedPutts = p.putts[h];
     const putts = S.play.draftPutts !== undefined ? S.play.draftPutts : savedPutts;
-    const dirty = (S.play.draft != null && S.play.draft !== saved) || (S.play.draftPutts !== undefined && S.play.draftPutts !== savedPutts) || saved == null;
+    const dirty = (S.play.draft != null && S.play.draft !== saved) || (puttsOn() && S.play.draftPutts !== undefined && S.play.draftPutts !== savedPutts) || saved == null;
 
     const board = computeBoard(S.state, effectiveMode());
     const me = board.find((r) => r.p.id === p.id);
@@ -652,12 +653,12 @@
 
           <div class="quicks" role="group" aria-label="Score">${quick.join("")}</div>
 
-          <div class="putts">
+          ${puttsOn() ? `<div class="putts">
             <span class="putts-label">Putts <small>optional</small></span>
             <div class="putt-opts">
               ${[0, 1, 2, 3, 4].map((n) => `<button type="button" class="putt${putts === n ? " on" : ""}" data-putts="${n}" ${locked ? "disabled" : ""}>${n === 4 ? "4+" : n}</button>`).join("")}
             </div>
-          </div>
+          </div>` : ""}
 
           ${locked ? `<p class="locked-note">Scoring is closed. The host has locked the leaderboard.</p>` : ""}
 
@@ -927,6 +928,11 @@
           <span class="switch-ui" aria-hidden="true"></span>
           <span>Handicap scoring <small>adds net scores and asks players for a handicap; off means handicaps are ignored</small></span>
         </label>
+        <label class="switch">
+          <input type="checkbox" name="putts" ${t.putts ? "checked" : ""}>
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span>Track putts <small>adds optional putt buttons to score entry and putts to scorecards</small></span>
+        </label>
         <button class="btn btn-gold btn-sm" type="submit">Save</button>
       </form>`;
     const form = $("#settings-form", el);
@@ -934,7 +940,7 @@
       e.preventDefault();
       const fd = new FormData(form);
       try {
-        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on" });
+        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on", putts: fd.get("putts") === "on" });
         toast("Tournament saved", "good");
       } catch (ex) { adminError(ex); }
     });

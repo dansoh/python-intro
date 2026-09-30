@@ -15,6 +15,7 @@ import os
 import queue
 import secrets
 import threading
+import traceback
 import time
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -47,6 +48,7 @@ def new_state():
             "strokeIndex": list(DEFAULT_STROKE_INDEX),
             "locked": False,
             "handicaps": False,
+            "putts": False,
         },
         "players": [],
         "events": [],
@@ -253,7 +255,9 @@ def api_score(body):
         if state["tournament"]["locked"]:
             raise ApiError(HTTPStatus.FORBIDDEN, "Scoring is locked by the tournament host.")
         player = find_player(state, player_id)
-        set_hole(state, player, hole, score, putts)
+        # When putts aren't being tracked, leave whatever was stored.
+        keep = putts if state["tournament"].get("putts") else player["putts"][hole]
+        set_hole(state, player, hole, score, keep)
         return {"ok": True}
 
     return STORE.mutate(fn)
@@ -360,9 +364,10 @@ def api_admin(body):
         subtitle = " ".join(str(body.get("subtitle") or "").split())[:64]
         locked = bool(body.get("locked"))
         handicaps = bool(body.get("handicaps"))
+        track_putts = bool(body.get("putts"))
 
         def fn(state, sec):
-            state["tournament"].update(name=name, subtitle=subtitle, locked=locked, handicaps=handicaps)
+            state["tournament"].update(name=name, subtitle=subtitle, locked=locked, handicaps=handicaps, putts=track_putts)
             return {"ok": True}
 
     elif action == "resetScores":
@@ -457,6 +462,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, handler(body))
         except ApiError as err:
             self.send_json(err.status, {"error": err.message})
+        except Exception:
+            # Never leave a phone hanging: report the failure so it can show an error and retry.
+            self.log_error("Unexpected error handling %s", path)
+            traceback.print_exc()
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Something went wrong saving that. Please try again."})
 
     def stream(self):
         q = STORE.subscribe()

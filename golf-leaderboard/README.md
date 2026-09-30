@@ -65,8 +65,8 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
 - **Highlights**: current leader, players on course, field birdie count, and the
   hole playing toughest.
 - **Live feed**: "Jordan birdied No. 7" as it happens.
-- **My Round**: big thumb-friendly score entry with + / - and one-tap
-  birdie/par/bogey buttons, optional putts, handicap stroke hints per hole,
+- **My Round**: one tap per score (eagle through triple, plus More), optional
+  putts when the host turns on Track putts in Admin, handicap stroke hints per hole,
   running position and to-par. A scorekeeper can add up to 4 players on one
   phone and switch between them; only that phone can post those players' scores.
 - **Clubhouse TV mode** (`#/tv`): full-screen board for a TV, pages through

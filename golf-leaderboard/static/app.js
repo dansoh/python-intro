@@ -34,6 +34,7 @@
     pin: store.session.get("lb.pin"),
     play: { hole: null, draft: null, draftPutts: undefined, forPlayer: null },
     adminDirty: new Map(), // "playerId:hole" -> value
+    adminHalf: "front",    // which nine the score grid shows on phones
     tvPage: 0,
   };
 
@@ -69,7 +70,7 @@
 
   function shortName(score, par) {
     if (score === 1) return "Ace";
-    return ({ "-3": "Albatross", "-2": "Eagle", "-1": "Birdie", 0: "Par", 1: "Bogey", 2: "Double", 3: "Triple" })[score - par] ?? "";
+    return ({ "-3": "Albatross", "-2": "Eagle", "-1": "Birdie", 0: "Par", 1: "Bogey", 2: "Dbl", 3: "Triple" })[score - par] ?? "";
   }
 
   function scoreClass(score, par) {
@@ -594,12 +595,16 @@
         <a class="chip chip-add" href="#/join">+ Add</a>
       </div>` : "";
 
+    // One tap per score: eagle through triple, plus "More" for anything higher (each tap adds a stroke).
     const quick = [];
     for (let d = -2; d <= 3; d++) {
       const s = par + d;
       if (s < 1) continue;
-      quick.push(`<button type="button" class="quick ${scoreClass(s, par).replace("sc-", "r-")}${s === value ? " on" : ""}" data-score="${s}"><b>${s}</b><small>${shortName(s, par)}</small></button>`);
+      quick.push(`<button type="button" class="quick ${scoreClass(s, par).replace("sc-", "r-")}${s === value ? " on" : ""}" data-score="${s}" ${locked ? "disabled" : ""}><b>${s}</b><small>${shortName(s, par)}</small></button>`);
     }
+    const high = value > par + 3;
+    quick.push(`<button type="button" class="quick r-double${high ? " on" : ""}" data-more ${locked || value >= 20 ? "disabled" : ""} aria-label="${high ? `${value}, tap to add a stroke` : "Higher score"}"><b>${high ? value : `${par + 4}+`}</b><small>${high ? "Tap +1" : "More"}</small></button>`);
+    const suggest = saved == null && S.play.draft == null;
 
     el.innerHTML = `
       <div class="play">
@@ -631,16 +636,12 @@
             </div>
           </div>
 
-          <div class="stepper" aria-label="Score">
-            <button type="button" class="step" data-step="-1" aria-label="One fewer stroke" ${value <= 1 || locked ? "disabled" : ""}>−</button>
-            <div class="step-val">
-              <span class="big sc-plain ${saved == null && S.play.draft == null ? "is-suggest" : ""}">${value}</span>
-              <span class="step-name ${scoreClass(value, par)}-t">${resultName(value, par)}</span>
-            </div>
-            <button type="button" class="step" data-step="1" aria-label="One more stroke" ${value >= 20 || locked ? "disabled" : ""}>+</button>
+          <div class="hero-score${suggest ? " is-suggest" : ""}" aria-live="polite">
+            <span class="sc ${scoreClass(value, par)} hero-mark">${value}</span>
+            <span class="hero-name">${resultName(value, par)}${suggest ? "<small>Tap your score</small>" : saved != null && S.play.draft == null ? "<small>Saved</small>" : ""}</span>
           </div>
 
-          <div class="quicks">${quick.join("")}</div>
+          <div class="quicks" role="group" aria-label="Score">${quick.join("")}</div>
 
           <div class="putts">
             <span class="putts-label">Putts <small>optional</small></span>
@@ -671,10 +672,10 @@
     centerHoleStrip();
     el.querySelectorAll("[data-player]").forEach((b) => b.addEventListener("click", () => { setActive(b.dataset.player); renderPlay(); }));
     el.querySelectorAll("[data-hole]").forEach((b) => b.addEventListener("click", () => gotoHole(+b.dataset.hole)));
-    el.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => {
-      S.play.draft = Math.min(20, Math.max(1, value + +b.dataset.step));
+    el.querySelector("[data-more]")?.addEventListener("click", () => {
+      S.play.draft = Math.min(20, high ? value + 1 : par + 4);
       renderPlay();
-    }));
+    });
     el.querySelectorAll("[data-score]").forEach((b) => b.addEventListener("click", () => {
       if (locked) return;
       S.play.draft = +b.dataset.score;
@@ -1028,15 +1029,21 @@
     const t = S.state.tournament;
     const players = [...S.state.players].sort((a, b) => a.name.localeCompare(b.name));
     el.innerHTML = `
-      <h3 class="section-title">Edit scores</h3>
+      <div class="panel-bar">
+        <h3 class="section-title">Edit scores</h3>
+        ${players.length ? `<div class="seg half-toggle" role="group" aria-label="Holes shown">
+          <button type="button" data-half="front" aria-pressed="${S.adminHalf === "front"}">Front 9</button>
+          <button type="button" data-half="back" aria-pressed="${S.adminHalf === "back"}">Back 9</button>
+        </div>` : ""}
+      </div>
       ${players.length ? `
-      <div class="grid-scroll">
+      <div class="grid-scroll" data-half="${S.adminHalf}">
         <table class="grid">
-          <thead><tr><th class="g-name">Player</th>${t.pars.map((_, i) => `<th>${i + 1}</th>`).join("")}</tr>
-          <tr class="par-row"><td class="g-name">Par</td>${t.pars.map((p) => `<td>${p}</td>`).join("")}</tr></thead>
+          <thead><tr><th class="g-name">Player</th>${t.pars.map((_, i) => `<th class="${i < 9 ? "h-f" : "h-b"}">${i + 1}</th>`).join("")}</tr>
+          <tr class="par-row"><td class="g-name">Par</td>${t.pars.map((p, i) => `<td class="${i < 9 ? "h-f" : "h-b"}">${p}</td>`).join("")}</tr></thead>
           <tbody>
             ${players.map((p) => `<tr><th class="g-name" scope="row">${esc(p.name)}</th>${p.scores.map((s, i) =>
-              `<td><input class="gcell" inputmode="numeric" maxlength="2" data-pid="${p.id}" data-hole="${i}" value="${s ?? ""}" aria-label="${esc(p.name)} hole ${i + 1}"></td>`).join("")}</tr>`).join("")}
+              `<td class="${i < 9 ? "h-f" : "h-b"}"><input class="gcell" inputmode="numeric" maxlength="2" data-pid="${p.id}" data-hole="${i}" value="${s ?? ""}" aria-label="${esc(p.name)} hole ${i + 1}"></td>`).join("")}</tr>`).join("")}
           </tbody>
         </table>
       </div>
@@ -1045,6 +1052,11 @@
         <button type="button" class="btn btn-gold" id="grid-save" disabled>Save scores</button>
       </div>` : `<p class="muted">Add players to edit their scores.</p>`}`;
 
+    el.querySelectorAll("button[data-half]").forEach((btn) => btn.addEventListener("click", () => {
+      S.adminHalf = btn.dataset.half;
+      el.querySelector(".grid-scroll").dataset.half = S.adminHalf;
+      el.querySelectorAll("button[data-half]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    }));
     el.querySelectorAll(".gcell").forEach((inp) => {
       inp.addEventListener("input", () => {
         inp.value = inp.value.replace(/\D/g, "").slice(0, 2);

@@ -15,7 +15,7 @@
   --paper-2: #f3ecd5;
   --ink: #16241b;
   --ink-soft: #52614f;
-  --under: #c8102e;
+  --under: #b00c26;
   --over: #0b5a34;
   --line: rgba(22, 36, 27, 0.12);
   --line-strong: rgba(22, 36, 27, 0.22);
@@ -432,7 +432,8 @@ a { color: var(--gold); }
 .move.up { color: var(--augusta); }
 .move.down { color: var(--under); }
 
-.lb tr.detail td { height: auto; padding: 0; background: var(--cream); border-bottom: 1px solid var(--line-strong); }
+.lb > tbody > tr.row.open > td:first-child { box-shadow: inset 4px 0 0 var(--gold); }
+.lb > tbody > tr.detail > td { height: auto; padding: 0 0 0 4px; background: #efe6c9; box-shadow: inset 4px 0 0 var(--gold), inset 0 6px 8px -6px rgba(22, 36, 27, 0.35); border-bottom: 1px solid var(--line-strong); }
 .board-hint { margin: 0; padding: 10px 16px; font-size: 0.75rem; color: var(--ink-soft); background: var(--paper-2); border-top: 1px solid var(--line); }
 
 /* Narrow screens: the hole-by-hole columns move into the tap-to-expand scorecard. */
@@ -475,7 +476,8 @@ a { color: var(--gold); }
 .card-hole { background: var(--augusta); }
 .card-hole th, .card-hole th[scope="row"] { color: #fff; font-weight: 700; }
 .card-par td { color: var(--ink-soft); background: var(--paper-2); }
-.card-score td { height: 40px; }
+.scorecard .card th, .scorecard .card td { height: auto; }
+.scorecard .card-score td { height: 40px; }
 .card-score .sc { font-size: 0.9rem; }
 .card-putts td { color: var(--ink-soft); font-size: 0.78rem; }
 .card td:last-child, .card th:last-child { background: rgba(0, 103, 71, 0.08); font-weight: 700; }
@@ -563,6 +565,8 @@ a { color: var(--gold); }
 .hs.done.r-bogey { background: #e5eadf; }
 .hs.done.r-double { background: #d3dbcc; }
 .hs.done.r-ace { background: var(--gold); color: var(--green-950); }
+.hs.done::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--augusta); }
+.hs.done.r-birdie::after, .hs.done.r-eagle::after { background: var(--under); }
 .hs.current { outline: 2px solid var(--gold); outline-offset: 1px; color: var(--gold); }
 .hs.done.current { color: var(--ink); }
 @media (max-width: 480px) { .hole-strip { grid-template-columns: repeat(18, 38px); } }
@@ -597,31 +601,32 @@ a { color: var(--gold); }
 .hole-si { font-size: 0.82rem; color: var(--on-green-soft); }
 .gets { color: var(--gold); font-weight: 700; }
 
-.stepper { display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 10px; }
-.step {
-  height: 72px;
-  border-radius: 18px;
-  border: 1px solid rgba(244, 196, 48, 0.4);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--gold);
-  font-size: 2.2rem;
-  font-weight: 300;
-  line-height: 1;
-  -webkit-tap-highlight-color: transparent;
+/* The chosen score, drawn with the same circle/square marks as the scorecard. */
+.hero-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink);
 }
-.step:active:not(:disabled) { background: rgba(244, 196, 48, 0.2); }
-.step:disabled { opacity: 0.3; }
-.step-val { text-align: center; display: grid; gap: 2px; }
-.step-val .big { font-family: var(--serif); font-size: 4.4rem; line-height: 1; color: var(--cream); font-variant-numeric: tabular-nums; }
-.step-val .big.is-suggest { color: rgba(246, 240, 220, 0.5); }
-.step-name { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--on-green-soft); }
-.sc-birdie-t, .sc-eagle-t, .sc-ace-t { color: #ff7a8c; }
-.sc-ace-t { color: var(--gold); }
+.hero-mark { font-family: var(--serif); font-size: 3rem; line-height: 1; }
+.hero-mark.sc-birdie, .hero-mark.sc-bogey { border-width: 3px; }
+.hero-mark.sc-eagle, .hero-mark.sc-double { border-width: 3px; box-shadow: 0 0 0 4px var(--paper), 0 0 0 7px currentColor; }
+.hero-mark.sc-double { box-shadow: 0 0 0 4px var(--paper), 0 0 0 7px var(--ink-soft); }
+.hero-mark.sc-ace { box-shadow: 0 0 0 4px var(--paper), 0 0 0 7px var(--gold-deep); }
+.hero-name { display: grid; gap: 2px; font-size: 1rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--augusta); }
+.hero-name small { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--ink-soft); }
+.hero-score.is-suggest .hero-mark { opacity: 0.4; }
+.hero-score.is-suggest .hero-name { color: var(--ink-soft); }
 
-.quicks { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.quicks { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .quick {
   display: grid;
   gap: 2px;
+  min-height: 58px;
   padding: 8px 2px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -629,13 +634,14 @@ a { color: var(--gold); }
   color: var(--on-green);
 }
 .quick b { font-family: var(--serif); font-size: 1.25rem; }
-.quick small { font-size: 0.56rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--on-green-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quick:disabled { opacity: 0.45; }
+.quick small { font-size: 0.56rem; font-weight: 700; letter-spacing: 0; text-transform: uppercase; color: var(--on-green-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .quick.r-birdie b, .quick.r-eagle b, .quick.r-ace b { color: #ff7a8c; }
 .quick.on { background: var(--paper); border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
 .quick.on b { color: var(--ink); }
 .quick.on.r-birdie b, .quick.on.r-eagle b { color: var(--under); }
 .quick.on small { color: var(--ink-soft); }
-@media (max-width: 380px) { .quicks { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 380px) { .quicks { grid-template-columns: repeat(4, 1fr); } }
 
 .putts { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .putts-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--on-green-soft); }
@@ -675,10 +681,10 @@ a { color: var(--gold); }
 .admin-login { max-width: 400px; margin: 20px auto; }
 .admin-login h2, .admin-head h2 { margin: 0 0 6px; font-family: var(--serif); font-weight: 400; font-size: 1.9rem; color: var(--cream); }
 .admin-login p { color: var(--on-green-soft); margin: 0 0 18px; }
-.admin { display: grid; gap: 16px; }
+.admin { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .admin-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 860px) { .admin-grid { grid-template-columns: 1fr; } }
+.admin-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .admin-grid { grid-template-columns: minmax(0, 1fr); } }
 .admin .form .btn { justify-self: start; }
 .invite { display: flex; gap: 16px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
 .qr { width: 132px; height: 132px; flex: none; background: #fff; border-radius: 10px; padding: 6px; }
@@ -718,6 +724,20 @@ a { color: var(--gold); }
 .course-tot { font-weight: 800; }
 .grid-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .grid-foot .muted { margin: 0; }
+
+.panel-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.panel-bar .section-title { margin: 0; }
+.half-toggle { display: none; }
+.half-toggle button { color: var(--on-green-soft); }
+@media (max-width: 760px) {
+  .half-toggle { display: inline-flex; }
+  .grid-scroll[data-half="front"] .h-b, .grid-scroll[data-half="back"] .h-f { display: none; }
+  .grid .g-name { min-width: 84px; padding-left: 8px; }
+  .gcell { width: 34px; height: 40px; }
+  .admin .btn-sm { min-height: 42px; padding: 0 14px; }
+  .plist .pl-actions { width: 100%; }
+  .plist .pl-actions .btn { flex: 1; }
+}
 
 .panel-danger { border-color: rgba(255, 110, 130, 0.25); }
 .panel-danger .section-title { color: #ff9aa8; }

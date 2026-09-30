@@ -91,7 +91,10 @@
     return si > HOLES + h ? -1 : 0; // plus handicaps give strokes back on the easiest holes
   }
 
-  const hasHandicaps = () => S.state.players.some((p) => p.handicap != null);
+  // Handicaps only count when the host turns on handicap scoring; otherwise they're ignored everywhere.
+  const handicapsOn = () => !!S.state?.tournament.handicaps;
+  const hcp = (p) => (handicapsOn() ? p.handicap : null);
+  const hasHandicaps = () => handicapsOn() && S.state.players.some((p) => p.handicap != null);
   const effectiveMode = () => (S.mode === "net" && hasHandicaps() ? "net" : "gross");
 
   // ---------- scoring ----------
@@ -103,7 +106,7 @@
       if (s == null) return;
       thru++;
       gross += s;
-      const strokes = strokesOn(p.handicap, strokeIndex[i]);
+      const strokes = strokesOn(hcp(p), strokeIndex[i]);
       net += s - strokes;
       toParG += s - pars[i];
       toParN += s - strokes - pars[i];
@@ -413,7 +416,7 @@
         <td class="c-pos">${esc(r.pos)}${moveHtml}</td>
         <td class="c-player">
           <span class="pname">${esc(p.name)}</span>${mine ? '<span class="you">You</span>' : ""}
-          ${p.handicap != null ? `<span class="hcp">${p.handicap}</span>` : ""}
+          ${hcp(p) != null ? `<span class="hcp">${p.handicap}</span>` : ""}
         </td>
         <td class="c-topar"><span class="${toParClass(r.toPar, r.thru > 0)}">${fmtToPar(r.toPar, r.thru > 0)}</span></td>
         <td class="c-thru">${thruLabel(r)}</td>
@@ -434,7 +437,7 @@
         holes.push(`<th>${i + 1}</th>`);
         pars.push(`<td>${t.pars[i]}</td>`);
         const s = p.scores[i];
-        const dots = strokesOn(p.handicap, t.strokeIndex[i]);
+        const dots = strokesOn(hcp(p), t.strokeIndex[i]);
         scores.push(`<td>${s == null ? '<span class="dash"></span>' : `<span class="sc ${scoreClass(s, t.pars[i])}">${s}</span>`}${dots > 0 ? `<i class="dots" title="${dots} handicap stroke${dots > 1 ? "s" : ""}">${"•".repeat(dots)}</i>` : ""}</td>`);
         putts.push(`<td>${p.putts[i] ?? ""}</td>`);
       }
@@ -447,7 +450,7 @@
           ${showPutts ? `<tr class="card-putts"><th scope="row">Putts</th>${putts.join("")}<td>${sum(p.putts.slice(a, b).filter((x) => x != null)) || ""}</td></tr>` : ""}
         </table>`;
     };
-    const hcpNote = p.handicap != null
+    const hcpNote = hcp(p) != null
       ? `<span><b>${fmtToPar(st.toParN, st.thru > 0)}</b> net</span><span><b>${fmtToPar(st.toParG, st.thru > 0)}</b> gross</span>`
       : `<span><b>${fmtToPar(st.toParG, st.thru > 0)}</b> to par</span>`;
     return `
@@ -578,7 +581,7 @@
 
     const board = computeBoard(S.state, effectiveMode());
     const me = board.find((r) => r.p.id === p.id);
-    const strokes = strokesOn(p.handicap, t.strokeIndex[h]);
+    const strokes = strokesOn(hcp(p), t.strokeIndex[h]);
     const locked = t.locked;
 
     const chips = S.devicePlayers.length > 1 ? `
@@ -604,7 +607,7 @@
         <div class="play-head">
           <div>
             <p class="eyebrow">Playing as</p>
-            <h2 class="play-name">${esc(p.name)}${p.handicap != null ? ` <span class="hcp">HCP ${p.handicap}</span>` : ""}</h2>
+            <h2 class="play-name">${esc(p.name)}${hcp(p) != null ? ` <span class="hcp">HCP ${p.handicap}</span>` : ""}</h2>
           </div>
           ${S.devicePlayers.length === 1 ? `<a class="link-small" href="#/join">Score for your group</a>` : ""}
         </div>
@@ -759,10 +762,10 @@
             <span>Player name <em>*</em></span>
             <input name="name" autocomplete="name" maxlength="32" required placeholder="e.g. Bobby Jones">
           </label>
-          <label class="field">
+          ${t.handicaps ? `<label class="field">
             <span>Handicap <small>optional, for net scoring</small></span>
             <input name="handicap" inputmode="decimal" placeholder="e.g. 12.4">
-          </label>
+          </label>` : ""}
           <p class="form-error" id="join-error" role="alert"></p>
           <button class="btn btn-gold btn-block" type="submit">${onDevice.length ? "Add player" : "Tee it up"}</button>
         </form>`}
@@ -909,6 +912,11 @@
           <span class="switch-ui" aria-hidden="true"></span>
           <span>Lock scoring <small>marks the board final; players can no longer post</small></span>
         </label>
+        <label class="switch">
+          <input type="checkbox" name="handicaps" ${t.handicaps ? "checked" : ""}>
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span>Handicap scoring <small>adds net scores and asks players for a handicap; off means handicaps are ignored</small></span>
+        </label>
         <button class="btn btn-gold btn-sm" type="submit">Save</button>
       </form>`;
     const form = $("#settings-form", el);
@@ -916,7 +924,7 @@
       e.preventDefault();
       const fd = new FormData(form);
       try {
-        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on" });
+        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on" });
         toast("Tournament saved", "good");
       } catch (ex) { adminError(ex); }
     });

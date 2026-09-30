@@ -46,6 +46,7 @@ def new_state():
             "pars": list(DEFAULT_PARS),
             "strokeIndex": list(DEFAULT_STROKE_INDEX),
             "locked": False,
+            "handicaps": False,
         },
         "players": [],
         "events": [],
@@ -223,7 +224,8 @@ def api_join(body):
     def fn(state, sec):
         if state["tournament"]["locked"]:
             raise ApiError(HTTPStatus.FORBIDDEN, "Scoring is locked by the tournament host.")
-        player = make_player(state, name, handicap)
+        # Players can only set a handicap when the host has turned handicap scoring on.
+        player = make_player(state, name, handicap if state["tournament"].get("handicaps") else None)
         state["players"].append(player)
         token = secrets.token_urlsafe(18)
         sec["playerTokens"][player["id"]] = token
@@ -343,9 +345,10 @@ def api_admin(body):
         name = " ".join(str(body.get("name") or "").split())[:48] or "The Invitational"
         subtitle = " ".join(str(body.get("subtitle") or "").split())[:64]
         locked = bool(body.get("locked"))
+        handicaps = bool(body.get("handicaps"))
 
         def fn(state, sec):
-            state["tournament"].update(name=name, subtitle=subtitle, locked=locked)
+            state["tournament"].update(name=name, subtitle=subtitle, locked=locked, handicaps=handicaps)
             return {"ok": True}
 
     elif action == "resetScores":

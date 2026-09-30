@@ -60,7 +60,8 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
 - **Leaderboard**: positions with ties (T2), to-par in Masters red and green,
   hole-by-hole scores with circles for birdies and squares for bogeys, Out/In
   totals, movement arrows, rows that flash when a score comes in, tap any player
-  for a full scorecard. Gross and net views when handicaps are entered.
+  for a full scorecard. Gross and net views when the host turns on handicap
+  scoring (off by default, so stray handicaps are ignored).
 - **Highlights**: current leader, players on course, field birdie count, and the
   hole playing toughest.
 - **Live feed**: "Jordan birdied No. 7" as it happens.

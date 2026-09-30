@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a3622">
+  <title>Leaderboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a3622'/%3E%3Cpath d='M11 6v21' stroke='%23f7f1dc' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M12 6l12 4.5L12 15z' fill='%23f4c430'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Libre+Franklin:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="brand" href="#/board" aria-label="Leaderboard home">
+        <svg class="flag" viewBox="0 0 32 40" aria-hidden="true">
+          <path d="M8 3v34" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M9.5 4 26 10 9.5 16z" fill="var(--gold)"/>
+          <ellipse cx="8" cy="37" rx="6" ry="1.6" fill="currentColor" opacity=".35"/>
+        </svg>
+        <span class="brand-text">
+          <span class="brand-name" id="tournament-name">The Invitational</span>
+          <span class="brand-sub" id="tournament-subtitle">Live Tournament Scoring</span>
+        </span>
+      </a>
+      <div class="live" id="live" data-state="connecting" title="Connection status">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span class="live-label" id="live-label">Connecting</span>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#/board" data-view="board">Leaderboard</a>
+      <a href="#/play" data-view="play">My Round</a>
+      <a href="#/join" data-view="join">Join</a>
+      <a href="#/admin" data-view="admin" class="tab-admin" aria-label="Admin">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7zm7.4-2.5.1-1-.1-1 2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1l-.4-2.7h-4l-.4 2.7c-.6.2-1.2.6-1.7 1l-2.5-1-2 3.5L4.6 11l-.1 1 .1 1-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.8 1.7 1l.4 2.7h4l.4-2.7c.6-.2 1.2-.6 1.7-1l2.5 1 2-3.5z"/></svg>
+        <span>Admin</span>
+      </a>
+    </nav>
+  </header>
+
+  <main id="main" class="main">
+    <section id="view-board" class="view" hidden></section>
+    <section id="view-play" class="view" hidden></section>
+    <section id="view-join" class="view" hidden></section>
+    <section id="view-admin" class="view" hidden></section>
+    <section id="view-tv" class="view" hidden></section>
+  </main>
+
+  <footer class="footer">
+    <span>A tradition unlike any other, among friends.</span>
+    <a href="#/tv">Clubhouse TV mode</a>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/vendor/qrcode.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

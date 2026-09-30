@@ -41,7 +41,7 @@ def new_state():
     return {
         "version": 1,
         "tournament": {
-            "name": "The MJxJL Invitational",
+            "name": "The Invitational",
             "subtitle": "Live Tournament Scoring",
             "pars": list(DEFAULT_PARS),
             "strokeIndex": list(DEFAULT_STROKE_INDEX),
@@ -342,7 +342,7 @@ def api_admin(body):
             return {"ok": True}
 
     elif action == "setSettings":
-        name = " ".join(str(body.get("name") or "").split())[:48] or "The MJxJL Invitational"
+        name = " ".join(str(body.get("name") or "").split())[:48] or "The Invitational"
         subtitle = " ".join(str(body.get("subtitle") or "").split())[:64]
         locked = bool(body.get("locked"))
         handicaps = bool(body.get("handicaps"))

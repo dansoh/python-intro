@@ -50,7 +50,7 @@ def new_state():
             "handicaps": False,
             "putts": False,
             "skins": False,
-            "skinsTies": "carry",  # "carry": a tied hole's skin carries over; "point": each tied player gets one
+            "skinsTies": "carry",  # "carry": rolls to the next hole; "point": each tied side gets a whole skin; "split": tied sides share it
             "format": "individual",  # "individual", "bestball" (low team score per hole) or "scramble" (one team score)
         },
         "players": [],
@@ -473,7 +473,7 @@ def api_admin(body):
         handicaps = bool(body.get("handicaps"))
         track_putts = bool(body.get("putts"))
         skins = bool(body.get("skins"))
-        skins_ties = body.get("skinsTies") if body.get("skinsTies") in ("carry", "point") else "carry"
+        skins_ties = body.get("skinsTies") if body.get("skinsTies") in ("carry", "point", "split") else "carry"
         fmt = body.get("format") if body.get("format") in FORMATS else "individual"
 
         def fn(state, sec):

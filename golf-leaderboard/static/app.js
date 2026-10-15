@@ -657,10 +657,13 @@
     const t = state.tournament;
     const n = t.pars.length;
     const net = handicapsOn();
-    const carryMode = t.skinsTies !== "point";
+    const ties = ["point", "split"].includes(t.skinsTies) ? t.skinsTies : "carry";
+    const carryMode = ties === "carry";
+    const add = (id, x) => totals.set(id, Math.round((totals.get(id) + x) * 1e9) / 1e9); // keeps ⅓ + ⅓ + ⅓ exactly 1
     const field = boardUnits(state).filter((p) => p.scores.some((x) => x != null));
     const scoreOf = (p, i) => p.scores[i] - (net ? strokesOn(hcp(p), t.strokeIndex[i], n) : 0);
     const totals = new Map(field.map((p) => [p.id, 0]));
+
     const holes = [];
     let carry = 0;
     let blocked = false; // carry mode: an unsettled hole means later holes' values aren't known yet
@@ -682,15 +685,17 @@
       if (carryMode && blocked) { holes.push({ i, status: "waiting", leaders, low }); continue; }
       const value = carryMode ? 1 + carry : 1;
       if (leaders.length === 1) {
-        totals.set(leaders[0].id, totals.get(leaders[0].id) + value);
+        add(leaders[0].id, value);
         holes.push({ i, status: "won", leaders, low, value });
         carry = 0;
       } else if (carryMode) {
         holes.push({ i, status: "carry", leaders, low, value });
         carry = value;
       } else {
-        leaders.forEach((p) => totals.set(p.id, totals.get(p.id) + 1));
-        holes.push({ i, status: "split", leaders, low, value: 1 });
+        // Tied for low: a whole skin each, or the one skin shared equally.
+        const each = ties === "split" ? 1 / leaders.length : 1;
+        leaders.forEach((p) => add(p.id, each));
+        holes.push({ i, status: "split", leaders, low, value: 1, each });
       }
     }
     const standings = field
@@ -699,15 +704,27 @@
     standings.forEach((r) => { r.rank = standings.findIndex((o) => o.skins === r.skins) + 1; });
     standings.forEach((r) => { r.pos = (standings.filter((o) => o.skins === r.skins).length > 1 ? "T" : "") + r.rank; });
     const settledAll = !blocked && holes.every((h) => h.status !== "open" && h.status !== "live");
-    return { holes, standings, carry: carryMode && !blocked ? carry : 0, carryMode, net, field, settledAll };
+    return { holes, standings, carry: carryMode && !blocked ? carry : 0, carryMode, ties, net, field, settledAll };
   }
+
+  // Skins can be fractional when tied sides split one: 1.5 shows as 1½.
+  function fmtSkins(x) {
+    const whole = Math.floor(x + 1e-9);
+    const frac = x - whole;
+    if (frac < 0.005) return String(whole);
+    const glyph = [[1 / 2, "½"], [1 / 3, "⅓"], [2 / 3, "⅔"], [1 / 4, "¼"], [3 / 4, "¾"], [1 / 6, "⅙"], [5 / 6, "⅚"]].find(([v]) => Math.abs(frac - v) < 0.005);
+    return glyph ? `${whole || ""}${glyph[1]}` : x.toFixed(2);
+  }
+  const TIE_LABELS = { carry: "Ties carry over", point: "Ties: whole skin each", split: "Ties: skin split equally" };
 
   const nameList = (ps) => ps.map((p) => `<b>${esc(p.name)}</b>`).join(", ");
 
   function skinsRules(sk) {
     return `${teamFormat() ? "Team vs team: the lowest team" : "Lowest"} ${sk.net ? "net " : ""}score on a hole wins a skin. ${sk.carryMode
       ? "Ties carry the skin over to the next hole."
-      : "Ties: every player tied for the low score gets a skin."} A hole is settled once every ${teamFormat() ? "team" : "player"} playing has posted it.`;
+      : sk.ties === "split"
+        ? `Ties: the ${teamFormat() ? "teams" : "players"} tied for the low score split the skin equally.`
+        : `Ties: every ${teamFormat() ? "team" : "player"} tied for the low score gets a whole skin.`} A hole is settled once every ${teamFormat() ? "team" : "player"} playing has posted it.`;
   }
 
   // Show each played hole, the next unplayed one (with what it's worth), then one line for the rest.
@@ -748,8 +765,8 @@
           badge = `<span class="sk-badge carry">${h.value} →</span>`;
           break;
         case "split":
-          text = `Tied at ${h.low}: ${nameList(h.leaders)} each get a skin.`;
-          badge = `<span class="sk-badge won">+1 each</span>`;
+          text = h.each < 1 ? `Tied at ${h.low}: ${nameList(h.leaders)} split the skin.` : `Tied at ${h.low}: ${nameList(h.leaders)} each get a skin.`;
+          badge = `<span class="sk-badge won">+${fmtSkins(h.each)} each</span>`;
           break;
         case "live":
           text = `${h.leaders.length > 1 ? `Tied at ${h.low} so far: ${nameList(h.leaders)}` : `${nameList(h.leaders)} leads with ${h.low}`} <span class="muted-inline">· ${h.posted} of ${h.of} posted</span>`;
@@ -771,7 +788,7 @@
           <div class="board-bar">
             <div>
               <h2 class="board-title">Skins</h2>
-              <p class="board-meta">${sk.carryMode ? "Ties carry over" : "Ties: a skin each"}${sk.net ? " · Net scores" : ""}${t.locked ? ' · <span class="pill-locked">Final</span>' : ""}</p>
+              <p class="board-meta">${TIE_LABELS[sk.ties]}${sk.net ? " · Net scores" : ""}${t.locked ? ' · <span class="pill-locked">Final</span>' : ""}</p>
             </div>
           </div>
           <table class="lb sk-table">
@@ -781,7 +798,7 @@
                 <tr class="${r.skins ? "" : "sk-zero"}">
                   <td class="c-pos">${r.skins ? esc(r.pos) : "–"}</td>
                   <td class="c-player"><span class="pname">${esc(r.p.name)}</span>${isMine(r.p) ? '<span class="you">You</span>' : ""}</td>
-                  <td class="c-tot">${r.skins}</td>
+                  <td class="c-tot">${fmtSkins(r.skins)}</td>
                 </tr>`).join("")}
             </tbody>
           </table>
@@ -1287,8 +1304,9 @@
         </label>
         <fieldset class="radio-group">
           <legend>Skins ties</legend>
-          <label><input type="radio" name="skinsTies" value="carry" ${t.skinsTies !== "point" ? "checked" : ""}> <span>Carry over <small>the skin rolls to the next hole</small></span></label>
-          <label><input type="radio" name="skinsTies" value="point" ${t.skinsTies === "point" ? "checked" : ""}> <span>Point each <small>every tied player gets a skin</small></span></label>
+          <label><input type="radio" name="skinsTies" value="carry" ${!["point", "split"].includes(t.skinsTies) ? "checked" : ""}> <span>Carry over <small>the skin rolls to the next hole</small></span></label>
+          <label><input type="radio" name="skinsTies" value="point" ${t.skinsTies === "point" ? "checked" : ""}> <span>Whole skin each <small>every tied team (or player) gets a full skin</small></span></label>
+          <label><input type="radio" name="skinsTies" value="split" ${t.skinsTies === "split" ? "checked" : ""}> <span>Split equally <small>tied teams share the skin: a 2-way tie is ½ each</small></span></label>
         </fieldset>
         <button class="btn btn-gold btn-sm" type="submit">Save</button>
       </form>`;
@@ -1613,10 +1631,10 @@
         <div class="tv-body">
           ${skinsPage ? `
           <table class="lb tv-lb sk-table">
-            <thead><tr><th class="c-pos">Pos</th><th class="c-player">Skins${sk.carryMode ? " · ties carry over" : " · ties: a skin each"}</th><th class="c-tot">Skins</th></tr></thead>
+            <thead><tr><th class="c-pos">Pos</th><th class="c-player">Skins · ${TIE_LABELS[sk.ties].toLowerCase()}</th><th class="c-tot">Skins</th></tr></thead>
             <tbody>
               ${sk.standings.slice(0, perPage).map((r) => `
-                <tr><td class="c-pos">${r.skins ? esc(r.pos) : "–"}</td><td class="c-player"><span class="pname">${esc(r.p.name)}</span></td><td class="c-tot">${r.skins}</td></tr>`).join("")}
+                <tr><td class="c-pos">${r.skins ? esc(r.pos) : "–"}</td><td class="c-player"><span class="pname">${esc(r.p.name)}</span></td><td class="c-tot">${fmtSkins(r.skins)}</td></tr>`).join("")}
             </tbody>
           </table>
           ${sk.carry ? `<p class="tv-empty">${sk.carry} skin${sk.carry > 1 ? "s" : ""} carrying over</p>` : ""}` : `

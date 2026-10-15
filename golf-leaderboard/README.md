@@ -77,8 +77,8 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
   - *Individual*: players compete; teams get a combined total.
 - **Skins game** (Admin > Tournament > Skins game): a Skins page with standings
   and a hole-by-hole breakdown. Lowest score on a hole wins a skin; a hole
-  settles once everyone playing has posted it. Ties either carry over to the
-  next hole or give each tied player a skin. Team vs team in Best ball and
+  settles once everyone playing has posted it. Ties carry over to the next
+  hole, give each tied side a whole skin, or split the skin equally. Team vs team in Best ball and
   Scramble. Uses net scores when handicap
   scoring is on, and appears in the TV rotation.
 - **Clubhouse TV mode** (`#/tv`): full-screen board for a TV, pages through

@@ -104,6 +104,49 @@
   const hasHandicaps = () => handicapsOn() && S.state.players.some((p) => p.handicap != null);
   const effectiveMode = () => (S.mode === "net" && hasHandicaps() ? "net" : "gross");
 
+  // ---------- teams ----------
+  // Format: "individual" ranks players; "scramble" and "bestball" rank teams.
+  const fmt = () => S.state?.tournament.format || "individual";
+  const teamFormat = () => fmt() !== "individual";
+  const teamOf = (p) => (p?.teamId && S.state.teams.find((t) => t.id === p.teamId)) || null;
+  const FORMAT_LABELS = { individual: "Individual", bestball: "Best ball", scramble: "Scramble" };
+
+  // A team as a scorecard the board, skins and TV can treat like a player. Scramble: the team's own
+  // card. Best ball: the low score on each hole, counted once every teammate who's playing has posted
+  // it (or when the board is final).
+  function teamUnits(state) {
+    const t = state.tournament;
+    const n = t.pars.length;
+    return state.teams.map((team) => {
+      const members = state.players.filter((p) => p.teamId === team.id);
+      if (t.format === "scramble") {
+        return { id: team.id, name: team.name, scores: team.scores, putts: team.putts, handicap: null, updatedAt: team.updatedAt, isTeam: true, members };
+      }
+      const playing = members.filter((p) => p.scores.some((x) => x != null));
+      const scores = Array.from({ length: n }, (_, i) => {
+        const posted = playing.map((p) => p.scores[i]).filter((x) => x != null);
+        if (!posted.length || (posted.length < playing.length && !t.locked)) return null;
+        return Math.min(...posted);
+      });
+      const updatedAt = Math.max(team.updatedAt, ...members.map((p) => p.updatedAt));
+      return { id: team.id, name: team.name, scores, putts: scores.map(() => null), handicap: null, updatedAt, isTeam: true, members };
+    });
+  }
+  const boardUnits = (state) => ((state.tournament.format || "individual") === "individual" ? state.players : teamUnits(state));
+
+  // Individual format with teams: each team's players added together.
+  function teamTotals(state, mode) {
+    const rows = computeBoard(state, mode, state.players);
+    return state.teams.map((team) => {
+      const mine = rows.filter((r) => r.p.teamId === team.id);
+      const started = mine.filter((r) => r.thru);
+      return {
+        team, members: mine.map((r) => r.p), started: started.length,
+        toPar: sum(started.map((r) => r.toPar)), strokes: sum(started.map((r) => r.total)), holes: sum(mine.map((r) => r.thru)),
+      };
+    }).sort((a, b) => (!a.started !== !b.started ? (a.started ? -1 : 1) : a.toPar - b.toPar || a.team.name.localeCompare(b.team.name)));
+  }
+
   // ---------- scoring ----------
   function playerStats(p, t) {
     const { pars, strokeIndex } = t;
@@ -126,9 +169,9 @@
     return { thru, gross, net, toParG, toParN, nines, putts: puttHoles ? putts : null, birdies };
   }
 
-  function computeBoard(state, mode) {
+  function computeBoard(state, mode, units = boardUnits(state)) {
     const t = state.tournament;
-    const rows = state.players.map((p) => {
+    const rows = units.map((p) => {
       const st = playerStats(p, t);
       return { p, ...st, toPar: mode === "net" ? st.toParN : st.toParG, total: mode === "net" ? st.net : st.gross };
     });
@@ -218,6 +261,7 @@
     // Movement arrows and flash highlights, always tracked on gross + net separately would be noisy;
     // track them on the currently displayed mode.
     const board = computeBoard(next, effectiveMode());
+    if ((next.tournament.format || "individual") !== "individual") board.push(...computeBoard(next, effectiveMode(), next.players));
     S.flash.clear();
     for (const r of board) {
       const prevRank = S.ranks.get(r.p.id);
@@ -328,7 +372,7 @@
     const rows = computeBoard(state, mode);
     const coursePar = sum(t.pars);
 
-    if (!state.players.length) {
+    if (!state.players.length && !(teamFormat() && state.teams.length)) {
       el.innerHTML = `
         <div class="empty">
           <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8v48" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M22 9l24 9-24 9z" fill="var(--gold)"/><ellipse cx="20" cy="56" rx="12" ry="3" fill="currentColor" opacity=".25"/></svg>
@@ -339,45 +383,19 @@
       return;
     }
 
+    const teamsFirst = teamFormat();
+    const unitWord = teamsFirst ? "team" : "player";
     el.innerHTML = `
       ${renderHighlights(rows, state)}
-      <div class="board-card">
-        <div class="board-bar">
-          <div>
-            <h2 class="board-title">Leaders</h2>
-            <p class="board-meta">Course par <strong>${coursePar}</strong> · ${state.players.length} player${state.players.length === 1 ? "" : "s"}${t.locked ? ' · <span class="pill-locked">Final</span>' : ""}</p>
-          </div>
-          ${hasHandicaps() ? `
-            <div class="seg" role="group" aria-label="Scoring mode">
-              <button type="button" data-mode="gross" aria-pressed="${mode === "gross"}">Gross</button>
-              <button type="button" data-mode="net" aria-pressed="${mode === "net"}">Net</button>
-            </div>` : ""}
-        </div>
-        <div class="board-scroll">
-          <table class="lb${holeCount() > 18 ? " many" : ""}">
-            <thead>
-              <tr>
-                <th class="c-pos" scope="col">Pos</th>
-                <th class="c-player" scope="col">Player</th>
-                <th class="c-topar" scope="col">To Par</th>
-                <th class="c-thru" scope="col">Thru</th>
-                ${ninesHtml((k) => `${holeHeads(9 * k, 9 * k + 9)}<th class="hc c-sub" scope="col">${NINE_LABELS[k]}</th>`)}
-                <th class="c-tot" scope="col">${mode === "net" ? "Net" : "Tot"}</th>
-                <th class="c-chev" aria-hidden="true"></th>
-              </tr>
-              <tr class="par-row">
-                <td></td><td class="c-player">Par</td><td></td><td></td>
-                ${ninesHtml((k) => { const np = t.pars.slice(9 * k, 9 * k + 9); return `${np.map((p) => `<td class="hc">${p}</td>`).join("")}<td class="hc c-sub">${sum(np)}</td>`; })}
-                <td class="c-tot">${coursePar}</td><td></td>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((r) => boardRow(r, t)).join("")}
-            </tbody>
-          </table>
-        </div>
-        <p class="board-hint">Tap a player for their scorecard.</p>
-      </div>
+      ${boardCard({
+        title: teamsFirst ? "Teams" : "Leaders",
+        meta: `${FORMAT_LABELS[fmt()]} · Course par <strong>${coursePar}</strong> · ${rows.length} ${unitWord}${rows.length === 1 ? "" : "s"}`,
+        rows, unitWord, showModes: !teamsFirst,
+      })}
+      ${fmt() === "bestball" && state.players.length ? boardCard({
+        title: "Players", meta: "Every player's own round", rows: computeBoard(state, mode, state.players), unitWord: "player", showModes: true,
+      }) : ""}
+      ${fmt() === "individual" && state.teams.length ? renderTeamTotals(state, mode) : ""}
       ${renderFeed(state)}
       ${renderLegend()}
     `;
@@ -401,6 +419,75 @@
     S.flash.clear();
   }
 
+  function boardCard({ title, meta, rows, unitWord, showModes }) {
+    const t = S.state.tournament;
+    const mode = effectiveMode();
+    const coursePar = sum(t.pars);
+    const Unit = unitWord[0].toUpperCase() + unitWord.slice(1);
+    return `
+      <div class="board-card">
+        <div class="board-bar">
+          <div>
+            <h2 class="board-title">${title}</h2>
+            <p class="board-meta">${meta}${t.locked ? ' · <span class="pill-locked">Final</span>' : ""}</p>
+          </div>
+          ${showModes && hasHandicaps() ? `
+            <div class="seg" role="group" aria-label="Scoring mode">
+              <button type="button" data-mode="gross" aria-pressed="${mode === "gross"}">Gross</button>
+              <button type="button" data-mode="net" aria-pressed="${mode === "net"}">Net</button>
+            </div>` : ""}
+        </div>
+        ${rows.length ? `
+        <div class="board-scroll">
+          <table class="lb${holeCount() > 18 ? " many" : ""}">
+            <thead>
+              <tr>
+                <th class="c-pos" scope="col">Pos</th>
+                <th class="c-player" scope="col">${Unit}</th>
+                <th class="c-topar" scope="col">To Par</th>
+                <th class="c-thru" scope="col">Thru</th>
+                ${ninesHtml((k) => `${holeHeads(9 * k, 9 * k + 9)}<th class="hc c-sub" scope="col">${NINE_LABELS[k]}</th>`)}
+                <th class="c-tot" scope="col">${mode === "net" && showModes ? "Net" : "Tot"}</th>
+                <th class="c-chev" aria-hidden="true"></th>
+              </tr>
+              <tr class="par-row">
+                <td></td><td class="c-player">Par</td><td></td><td></td>
+                ${ninesHtml((k) => { const np = t.pars.slice(9 * k, 9 * k + 9); return `${np.map((p) => `<td class="hc">${p}</td>`).join("")}<td class="hc c-sub">${sum(np)}</td>`; })}
+                <td class="c-tot">${coursePar}</td><td></td>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r) => boardRow(r, t)).join("")}
+            </tbody>
+          </table>
+        </div>
+        <p class="board-hint">Tap a ${unitWord} for the scorecard.</p>` : `<p class="board-hint">${unitWord === "team" ? "No teams yet. The host sets them up on the admin page." : "No players yet."}</p>`}
+      </div>`;
+  }
+
+  function renderTeamTotals(state, mode) {
+    const totals = teamTotals(state, mode);
+    return `
+      <div class="board-card team-totals">
+        <div class="board-bar"><div><h2 class="board-title">Team totals</h2><p class="board-meta">Each team's players added together</p></div></div>
+        <table class="lb sk-table">
+          <thead><tr><th class="c-pos" scope="col">Pos</th><th class="c-player" scope="col">Team</th><th class="c-topar" scope="col">To Par</th><th class="c-tot" scope="col">Strokes</th></tr></thead>
+          <tbody>
+            ${totals.map((x, i) => {
+              const rank = x.started ? totals.findIndex((o) => o.started && o.toPar === x.toPar) + 1 : null;
+              const tied = x.started && totals.filter((o) => o.started && o.toPar === x.toPar).length > 1;
+              return `<tr>
+                <td class="c-pos">${rank ? (tied ? "T" : "") + rank : "–"}</td>
+                <td class="c-player"><span class="pname">${esc(x.team.name)}</span><span class="members">${x.members.map((p) => esc(p.name)).join(", ") || "No players yet"}</span></td>
+                <td class="c-topar"><span class="${toParClass(x.toPar, x.started > 0)}">${fmtToPar(x.toPar, x.started > 0)}</span></td>
+                <td class="c-tot">${x.started ? x.strokes : ""}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
   const ninesHtml = (fn) => Array.from({ length: nineCount() }, (_, k) => fn(k)).join("");
 
   function holeHeads(a, b) {
@@ -416,7 +503,7 @@
     const moveHtml = move
       ? `<span class="move ${move > 0 ? "up" : "down"}" title="${move > 0 ? "Up" : "Down"} ${Math.abs(move)}">${move > 0 ? "▲" : "▼"}${Math.abs(move)}</span>`
       : "";
-    const mine = S.devicePlayers.some((d) => d.id === p.id);
+    const mine = S.devicePlayers.some((d) => d.id === p.id || p.members?.some((m) => m.id === d.id));
     const cells = (a, b) => {
       let h = "";
       for (let i = a; i < b; i++) {
@@ -432,6 +519,7 @@
         <td class="c-player">
           <span class="pname">${esc(p.name)}</span>${mine ? '<span class="you">You</span>' : ""}
           ${hcp(p) != null ? `<span class="hcp">${p.handicap}</span>` : ""}
+          ${p.isTeam ? `<span class="members">${p.members.map((m) => esc(m.name)).join(", ") || "No players yet"}</span>` : ""}
         </td>
         <td class="c-topar"><span class="${toParClass(r.toPar, r.thru > 0)}">${fmtToPar(r.toPar, r.thru > 0)}</span></td>
         <td class="c-thru">${thruLabel(r)}</td>
@@ -470,6 +558,7 @@
     return `
       <div class="scorecard">
         <div class="card-summary">
+          ${p.isTeam ? `<span>${fmt() === "bestball" ? "Best ball of" : "Scramble:"} <b>${p.members.map((m) => esc(m.name)).join(", ") || "no players yet"}</b></span>` : ""}
           ${hcpNote}
           <span><b>${st.thru ? st.gross : "–"}</b> strokes</span>
           <span><b>${st.birdies}</b> birdie${st.birdies === 1 ? "" : "s"} or better</span>
@@ -486,7 +575,7 @@
     const finished = rows.filter((r) => r.thru === holeCount()).length;
     let birdies = 0, eagles = 0;
     const holeDiff = Array.from({ length: holeCount() }, () => ({ total: 0, n: 0 }));
-    for (const p of state.players) {
+    for (const p of fmt() === "scramble" ? rows.map((r) => r.p) : state.players) {
       p.scores.forEach((s, i) => {
         if (s == null) return;
         const d = s - t.pars[i];
@@ -569,7 +658,7 @@
     const n = t.pars.length;
     const net = handicapsOn();
     const carryMode = t.skinsTies !== "point";
-    const field = state.players.filter((p) => p.scores.some((x) => x != null));
+    const field = boardUnits(state).filter((p) => p.scores.some((x) => x != null));
     const scoreOf = (p, i) => p.scores[i] - (net ? strokesOn(hcp(p), t.strokeIndex[i], n) : 0);
     const totals = new Map(field.map((p) => [p.id, 0]));
     const holes = [];
@@ -616,9 +705,9 @@
   const nameList = (ps) => ps.map((p) => `<b>${esc(p.name)}</b>`).join(", ");
 
   function skinsRules(sk) {
-    return `Lowest ${sk.net ? "net " : ""}score on a hole wins a skin. ${sk.carryMode
+    return `${teamFormat() ? "Team vs team: the lowest team" : "Lowest"} ${sk.net ? "net " : ""}score on a hole wins a skin. ${sk.carryMode
       ? "Ties carry the skin over to the next hole."
-      : "Ties: every player tied for the low score gets a skin."} A hole is settled once everyone playing has posted it.`;
+      : "Ties: every player tied for the low score gets a skin."} A hole is settled once every ${teamFormat() ? "team" : "player"} playing has posted it.`;
   }
 
   // Show each played hole, the next unplayed one (with what it's worth), then one line for the rest.
@@ -640,11 +729,12 @@
         <div class="empty">
           <h2>Skins</h2>
           <p>${skinsRules(sk)}</p>
-          <p>The skins game starts once at least two players have posted a score.</p>
+          <p>The skins game starts once at least two ${teamFormat() ? "teams" : "players"} have posted a score.</p>
         </div>`;
       return;
     }
     const mine = new Set(S.devicePlayers.map((d) => d.id));
+    const isMine = (u) => mine.has(u.id) || (u.members || []).some((m) => mine.has(m.id));
     const holeRow = (h) => {
       const par = t.pars[h.i];
       let text, badge;
@@ -685,12 +775,12 @@
             </div>
           </div>
           <table class="lb sk-table">
-            <thead><tr><th class="c-pos" scope="col">Pos</th><th class="c-player" scope="col">Player</th><th class="c-tot" scope="col">Skins</th></tr></thead>
+            <thead><tr><th class="c-pos" scope="col">Pos</th><th class="c-player" scope="col">${teamFormat() ? "Team" : "Player"}</th><th class="c-tot" scope="col">Skins</th></tr></thead>
             <tbody>
               ${sk.standings.map((r) => `
                 <tr class="${r.skins ? "" : "sk-zero"}">
                   <td class="c-pos">${r.skins ? esc(r.pos) : "–"}</td>
-                  <td class="c-player"><span class="pname">${esc(r.p.name)}</span>${mine.has(r.p.id) ? '<span class="you">You</span>' : ""}</td>
+                  <td class="c-player"><span class="pname">${esc(r.p.name)}</span>${isMine(r.p) ? '<span class="you">You</span>' : ""}</td>
                   <td class="c-tot">${r.skins}</td>
                 </tr>`).join("")}
             </tbody>
@@ -724,29 +814,39 @@
     const p = activePlayer();
     if (!p) { location.hash = "#/join"; return; }
     const t = S.state.tournament;
+    const team = teamOf(p);
+    if ((teamFormat() && !team) || S.play.pickTeam) { renderTeamPicker(el, p, team); return; }
+    // In a scramble this phone scores the team's card; otherwise the player's own.
+    const scramble = fmt() === "scramble";
+    const card = scramble ? teamUnits(S.state).find((u) => u.id === team.id) : p;
 
-    if (S.play.forPlayer !== p.id || S.play.hole == null) {
-      S.play = { hole: firstOpenHole(p), draft: null, draftPutts: undefined, forPlayer: p.id };
+    if (S.play.forPlayer !== card.id || S.play.hole == null) {
+      S.play = { hole: firstOpenHole(card), draft: null, draftPutts: undefined, forPlayer: card.id };
     }
     const h = S.play.hole;
     const par = t.pars[h];
-    const saved = p.scores[h];
+    const saved = card.scores[h];
     const value = S.play.draft ?? saved ?? par;
-    const savedPutts = p.putts[h];
+    const savedPutts = card.putts[h];
     const putts = S.play.draftPutts !== undefined ? S.play.draftPutts : savedPutts;
     const dirty = (S.play.draft != null && S.play.draft !== saved) || (puttsOn() && S.play.draftPutts !== undefined && S.play.draftPutts !== savedPutts) || saved == null;
 
-    const board = computeBoard(S.state, effectiveMode());
-    const me = board.find((r) => r.p.id === p.id);
-    const strokes = strokesOn(hcp(p), t.strokeIndex[h], t.pars.length);
+    const board = computeBoard(S.state, effectiveMode(), scramble ? teamUnits(S.state) : S.state.players);
+    const me = board.find((r) => r.p.id === card.id);
+    const teamRow = fmt() === "bestball" && team ? computeBoard(S.state, effectiveMode()).find((r) => r.p.id === team.id) : null;
+    const strokes = strokesOn(hcp(card), t.strokeIndex[h], t.pars.length);
     const locked = t.locked;
 
-    const chips = S.devicePlayers.length > 1 ? `
+    // In a scramble, players on the same team share one card, so they share one chip.
+    const onPhone = S.devicePlayers.map((d) => S.state.players.find((x) => x.id === d.id)).filter(Boolean);
+    const chipFor = scramble
+      ? onPhone.filter((pl, i) => !pl.teamId || onPhone.findIndex((o) => o.teamId === pl.teamId) === i)
+      : onPhone;
+    const chips = chipFor.length > 1 || S.devicePlayers.length > 1 ? `
       <div class="chips" role="tablist" aria-label="Players on this device">
-        ${S.devicePlayers.map((d) => {
-          const pl = S.state.players.find((x) => x.id === d.id);
-          if (!pl) return "";
-          return `<button type="button" role="tab" class="chip" data-player="${pl.id}" aria-selected="${pl.id === p.id}">${esc(pl.name)}</button>`;
+        ${chipFor.map((pl) => {
+          const selected = scramble && pl.teamId ? pl.teamId === p.teamId : pl.id === p.id;
+          return `<button type="button" role="tab" class="chip" data-player="${pl.id}" aria-selected="${selected}">${esc(scramble && teamOf(pl) ? teamOf(pl).name : pl.name)}</button>`;
         }).join("")}
         ${S.devicePlayers.length < MAX_PER_PHONE ? `<a class="chip chip-add" href="#/join">+ Add</a>` : ""}
       </div>` : "";
@@ -767,10 +867,14 @@
         ${chips}
         <div class="play-head">
           <div>
-            <p class="eyebrow">${S.devicePlayers.length > 1 ? "Scoring for" : "Playing as"}</p>
-            <h2 class="play-name">${esc(p.name)}${hcp(p) != null ? ` <span class="hcp">HCP ${p.handicap}</span>` : ""}</h2>
+            <p class="eyebrow">${scramble ? "Scoring for team" : S.devicePlayers.length > 1 ? "Scoring for" : "Playing as"}</p>
+            <h2 class="play-name">${esc(card.name)}${hcp(card) != null ? ` <span class="hcp">HCP ${card.handicap}</span>` : ""}</h2>
+            ${scramble ? `<p class="team-members">${card.members.map((m) => esc(m.name)).join(", ")}</p>` : team ? `<p class="team-members">Team ${esc(team.name)}</p>` : ""}
           </div>
-          ${S.devicePlayers.length === 1 ? `<a class="link-small" href="#/join">Score for your group</a>` : ""}
+          <div class="play-links">
+            ${S.devicePlayers.length === 1 && !scramble ? `<a class="link-small" href="#/join">Score for your group</a>` : ""}
+            ${S.state.teams.length ? `<button type="button" class="link-small" data-change-team>${team ? "Change team" : "Join a team"}</button>` : ""}
+          </div>
         </div>
 
         <div class="stat-row">
@@ -778,9 +882,10 @@
           <div class="stat"><span class="stat-label">To par${effectiveMode() === "net" ? " (net)" : ""}</span><span class="stat-val ${toParClass(me.toPar, me.thru > 0)}">${fmtToPar(me.toPar, me.thru > 0)}</span></div>
           <div class="stat"><span class="stat-label">Thru</span><span class="stat-val">${thruLabel(me)}</span></div>
         </div>
+        ${teamRow ? `<p class="team-line">Team ${esc(team.name)} best ball: <b class="${toParClass(teamRow.toPar, teamRow.thru > 0)}">${fmtToPar(teamRow.toPar, teamRow.thru > 0)}</b>${teamRow.thru ? ` · ${esc(teamRow.pos)} · thru ${thruLabel(teamRow)}` : " · not started"}</p>` : ""}
 
         <div class="hole-strip" role="tablist" aria-label="Holes" style="--holes: ${t.pars.length}">
-          ${t.pars.map((hp, i) => `<button type="button" role="tab" class="hs ${scoreClass(p.scores[i], hp).replace("sc-", "r-")}${i === h ? " current" : ""}${p.scores[i] != null ? " done" : ""}" data-hole="${i}" aria-selected="${i === h}" aria-label="Hole ${i + 1}${p.scores[i] != null ? `, scored ${p.scores[i]}` : ""}">${i + 1}</button>`).join("")}
+          ${t.pars.map((hp, i) => `<button type="button" role="tab" class="hs ${scoreClass(card.scores[i], hp).replace("sc-", "r-")}${i === h ? " current" : ""}${card.scores[i] != null ? " done" : ""}" data-hole="${i}" aria-selected="${i === h}" aria-label="Hole ${i + 1}${card.scores[i] != null ? `, scored ${card.scores[i]}` : ""}">${i + 1}</button>`).join("")}
         </div>
 
         <div class="hole-card${locked ? " is-locked" : ""}">
@@ -817,16 +922,17 @@
           ${saved != null && !locked ? `<button type="button" class="link-small clear-hole" data-clear>Clear this hole</button>` : ""}
         </div>
 
-        ${me.thru === holeCount() ? `<div class="done-banner"><b>Round complete.</b> You finished at <span class="${toParClass(me.toPar)}">${fmtToPar(me.toPar)}</span>. Head to the clubhouse.</div>` : ""}
+        ${me.thru === holeCount() ? `<div class="done-banner"><b>Round complete.</b> ${scramble ? "Your team" : "You"} finished at <span class="${toParClass(me.toPar)}">${fmtToPar(me.toPar)}</span>. Head to the clubhouse.</div>` : ""}
 
         <div class="play-card">
-          <h3 class="section-title">Your scorecard</h3>
-          ${scorecard(p, t, me)}
+          <h3 class="section-title">${scramble ? "Team scorecard" : "Your scorecard"}</h3>
+          ${scorecard(card, t, me)}
         </div>
       </div>`;
 
     centerHoleStrip();
     el.querySelectorAll("[data-player]").forEach((b) => b.addEventListener("click", () => { setActive(b.dataset.player); renderPlay(); }));
+    el.querySelector("[data-change-team]")?.addEventListener("click", () => { S.play.pickTeam = true; renderPlay(); });
     el.querySelectorAll("[data-hole]").forEach((b) => b.addEventListener("click", () => gotoHole(+b.dataset.hole)));
     el.querySelector("[data-more]")?.addEventListener("click", () => {
       S.play.draft = Math.min(20, high ? value + 1 : par + 4);
@@ -845,11 +951,45 @@
     el.querySelector("[data-nav]")?.addEventListener("click", () => gotoHole(h - 1));
     el.querySelector("[data-save]")?.addEventListener("click", async (e) => {
       if (!dirty) { if (h < holeCount() - 1) gotoHole(h + 1); return; }
-      await saveHole(p, h, value, putts, e.currentTarget);
+      await saveHole(p, card, h, value, putts, e.currentTarget);
     });
     el.querySelector("[data-clear]")?.addEventListener("click", async (e) => {
-      await saveHole(p, h, null, null, e.currentTarget);
+      await saveHole(p, card, h, null, null, e.currentTarget);
     });
+  }
+
+  function renderTeamPicker(el, p, team) {
+    const teams = S.state.teams;
+    const why = fmt() === "scramble"
+      ? "In a scramble your team posts one score per hole. Anyone on the team can enter it."
+      : fmt() === "bestball"
+        ? "Everyone plays their own ball. Your team's score on each hole is its lowest score."
+        : "Teams are optional in this format. Your scores also count toward your team's total.";
+    el.innerHTML = `
+      <div class="play">
+        <div class="join-hero">
+          <p class="eyebrow">${esc(p.name)}</p>
+          <h2>${team ? "Change team" : "Pick your team"}</h2>
+          <p>${why}</p>
+        </div>
+        ${teams.length ? `<div class="team-pick">${teams.map((tm) => {
+          const members = S.state.players.filter((x) => x.teamId === tm.id);
+          return `<button type="button" class="team-opt${tm.id === p.teamId ? " on" : ""}" data-team="${tm.id}"><b>${esc(tm.name)}</b><small>${members.map((m) => esc(m.name)).join(", ") || "No players yet"}</small></button>`;
+        }).join("")}</div>` : `<p class="locked-note">The host hasn't set up teams yet. This page updates as soon as they do.</p>`}
+        ${team || !teamFormat() ? `<button type="button" class="link-small" data-cancel>${team ? `Stay on ${esc(team.name)}` : "Skip for now"}</button>` : ""}
+      </div>`;
+    el.querySelectorAll("[data-team]").forEach((b) => b.addEventListener("click", async () => {
+      const cred = S.devicePlayers.find((d) => d.id === p.id);
+      try {
+        await api("/api/team", { playerId: p.id, token: cred.token, teamId: b.dataset.team });
+        const pl = S.state.players.find((x) => x.id === p.id);
+        if (pl) pl.teamId = b.dataset.team;
+        S.play = { hole: null, draft: null, draftPutts: undefined, forPlayer: null };
+        toast(`You're on ${S.state.teams.find((x) => x.id === b.dataset.team)?.name}.`, "good");
+        renderPlay();
+      } catch (ex) { toast(ex.message, "bad"); }
+    }));
+    el.querySelector("[data-cancel]")?.addEventListener("click", () => { S.play.pickTeam = false; renderPlay(); });
   }
 
   // Scroll the strip itself (not the page) so the current hole is visible.
@@ -868,7 +1008,8 @@
     renderPlay();
   }
 
-  async function saveHole(p, h, score, putts, btn) {
+  // Posts as the player on this phone; in a scramble the server puts it on their team's card.
+  async function saveHole(p, card, h, score, putts, btn) {
     const cred = S.devicePlayers.find((d) => d.id === p.id);
     if (!cred) return;
     btn.disabled = true;
@@ -886,8 +1027,8 @@
       S.play.draftPutts = undefined;
       if (score != null && h < holeCount() - 1) S.play.hole = h + 1;
       // The live stream will re-render with the saved score; render now for snappiness too.
-      const player = S.state.players.find((x) => x.id === p.id);
-      if (player) { player.scores[h] = score; player.putts[h] = score == null ? null : putts; }
+      const target = card.isTeam ? S.state.teams.find((x) => x.id === card.id) : S.state.players.find((x) => x.id === p.id);
+      if (target) { target.scores[h] = score; target.putts[h] = score == null ? null : putts; }
       renderPlay();
       } catch (err) {
       toast(err.message, "bad");
@@ -923,6 +1064,13 @@
             <span>Handicap <small>optional, for net scoring</small></span>
             <input name="handicap" inputmode="decimal" placeholder="e.g. 12.4">
           </label>` : ""}
+          ${S.state.teams.length ? `<label class="field">
+            <span>Team ${teamFormat() ? "<em>*</em>" : "<small>optional</small>"}</span>
+            <select name="teamId">
+              <option value="">${teamFormat() ? "Pick your team" : "No team"}</option>
+              ${S.state.teams.map((tm) => `<option value="${tm.id}" ${tm.id === teamOf(onDevice.find((x) => x.id === S.active))?.id ? "selected" : ""}>${esc(tm.name)}</option>`).join("")}
+            </select>
+          </label>` : ""}
           <p class="form-error" id="join-error" role="alert"></p>
           <button class="btn btn-gold btn-block" type="submit">${onDevice.length ? "Add player" : "Tee it up"}</button>
         </form>`}
@@ -942,10 +1090,12 @@
       err.textContent = "";
       const name = String(fd.get("name") || "").trim();
       if (!name) { err.textContent = "Enter a name."; return; }
+      const teamId = String(fd.get("teamId") || "");
+      if (teamFormat() && S.state.teams.length && !teamId) { err.textContent = "Pick your team."; return; }
       const btn = form.querySelector("button");
       btn.disabled = true;
       try {
-        const res = await api("/api/join", { name, handicap: String(fd.get("handicap") || "").trim() });
+        const res = await api("/api/join", { name, handicap: String(fd.get("handicap") || "").trim(), teamId });
         claimPlayer(res.player.id, res.token);
         toast(`Welcome to the field, ${res.player.name}.`, "good");
         location.hash = "#/play";
@@ -998,6 +1148,7 @@
             <section class="panel" id="panel-invite"></section>
             <section class="panel" id="panel-settings"></section>
           </div>
+          <section class="panel" id="panel-teams"></section>
           <section class="panel" id="panel-players"></section>
           <section class="panel" id="panel-scores"></section>
           <section class="panel" id="panel-course"></section>
@@ -1014,8 +1165,52 @@
       renderCourse();
       renderDanger();
     }
+    renderTeamsPanel();
     renderPlayersPanel();
     renderScoresPanel();
+  }
+
+  function renderTeamsPanel() {
+    const el = $("#panel-teams");
+    if (!el || (el.contains(document.activeElement) && document.activeElement.tagName === "INPUT")) return;
+    const teams = S.state.teams;
+    el.innerHTML = `
+      <h3 class="section-title">Teams <span class="count">${teams.length}</span></h3>
+      <p class="muted">Format: <b>${FORMAT_LABELS[fmt()]}</b> (change it under Tournament). Players pick their team when they join; you can move them in the Players list below.</p>
+      <form class="form form-inline team-form" id="team-form" novalidate>
+        <label class="field"><span>Team name <em>*</em></span><input name="name" maxlength="32" required placeholder="e.g. Eagles"></label>
+        <button class="btn btn-gold" type="submit">Add team</button>
+      </form>
+      ${teams.length ? `<ul class="plist">${teams.map((tm) => {
+        const members = S.state.players.filter((p) => p.teamId === tm.id);
+        return `<li data-team="${tm.id}">
+          <div class="pl-main"><span class="pname">${esc(tm.name)}</span><span class="muted">${members.map((m) => esc(m.name)).join(", ") || "No players yet"}</span></div>
+          <div class="pl-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-act="rename">Rename</button>
+            <button type="button" class="btn btn-danger btn-sm" data-act="remove">Remove</button>
+          </div>
+        </li>`;
+      }).join("")}</ul>` : `<p class="muted">No teams yet.</p>`}`;
+    const form = $("#team-form", el);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = String(new FormData(form).get("name") || "").trim();
+      if (!name) { toast("Enter a team name", "bad"); return; }
+      try { await adminApi("addTeam", { name }); form.reset(); document.activeElement?.blur(); toast(`${name} added`, "good"); }
+      catch (ex) { adminError(ex); }
+    });
+    el.querySelectorAll("li[data-team]").forEach((li) => {
+      const tm = S.state.teams.find((x) => x.id === li.dataset.team);
+      li.querySelector('[data-act="rename"]').addEventListener("click", async () => {
+        const name = prompt("Team name", tm.name);
+        if (!name || name.trim() === tm.name) return;
+        try { await adminApi("renameTeam", { teamId: tm.id, name }); toast("Team renamed", "good"); } catch (ex) { adminError(ex); }
+      });
+      li.querySelector('[data-act="remove"]').addEventListener("click", async () => {
+        if (!confirm(`Remove ${tm.name}? Its players stay on the board without a team${fmt() === "scramble" ? ", and the team's scramble scores are deleted" : ""}.`)) return;
+        try { await adminApi("removeTeam", { teamId: tm.id }); toast(`${tm.name} removed`); } catch (ex) { adminError(ex); }
+      });
+    });
   }
 
   const siteUrl = () => `${location.origin}/`;
@@ -1079,10 +1274,16 @@
           <span class="switch-ui" aria-hidden="true"></span>
           <span>Track putts <small>adds optional putt buttons to score entry and putts to scorecards</small></span>
         </label>
+        <fieldset class="radio-group">
+          <legend>Format</legend>
+          <label><input type="radio" name="format" value="individual" ${fmt() === "individual" ? "checked" : ""}> <span>Individual <small>everyone plays their own ball; teams (if any) get a total</small></span></label>
+          <label><input type="radio" name="format" value="bestball" ${fmt() === "bestball" ? "checked" : ""}> <span>Best ball <small>own ball; a team's score on each hole is its lowest</small></span></label>
+          <label><input type="radio" name="format" value="scramble" ${fmt() === "scramble" ? "checked" : ""}> <span>Scramble <small>each team posts one score per hole</small></span></label>
+        </fieldset>
         <label class="switch">
           <input type="checkbox" name="skins" ${t.skins ? "checked" : ""}>
           <span class="switch-ui" aria-hidden="true"></span>
-          <span>Skins game <small>adds a Skins page: lowest score on each hole wins a skin</small></span>
+          <span>Skins game <small>adds a Skins page: lowest score on each hole wins a skin (team vs team in Best ball and Scramble)</small></span>
         </label>
         <fieldset class="radio-group">
           <legend>Skins ties</legend>
@@ -1096,7 +1297,7 @@
       e.preventDefault();
       const fd = new FormData(form);
       try {
-        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on", putts: fd.get("putts") === "on", skins: fd.get("skins") === "on", skinsTies: fd.get("skinsTies") });
+        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on", putts: fd.get("putts") === "on", skins: fd.get("skins") === "on", skinsTies: fd.get("skinsTies"), format: fd.get("format") });
         toast("Tournament saved", "good");
       } catch (ex) { adminError(ex); }
     });
@@ -1129,6 +1330,10 @@
               <span class="muted">${p.handicap != null ? `HCP ${p.handicap} · ` : ""}${st.thru ? `thru ${st.thru}, ${fmtToPar(st.toParG)}` : "not started"}</span>
             </div>
             <div class="pl-actions">
+              ${S.state.teams.length ? `<select class="team-select" data-act="team" aria-label="Team for ${esc(p.name)}">
+                <option value="">No team</option>
+                ${S.state.teams.map((tm) => `<option value="${tm.id}" ${tm.id === p.teamId ? "selected" : ""}>${esc(tm.name)}</option>`).join("")}
+              </select>` : ""}
               <button type="button" class="btn btn-ghost btn-sm" data-act="edit">Edit</button>
               <button type="button" class="btn btn-ghost btn-sm" data-act="link" title="Copy a link that lets a phone post scores for this player">Phone link</button>
               <button type="button" class="btn btn-danger btn-sm" data-act="remove">Remove</button>
@@ -1153,6 +1358,10 @@
 
     el.querySelectorAll(".plist li").forEach((li) => {
       const p = S.state.players.find((x) => x.id === li.dataset.id);
+      li.querySelector('[data-act="team"]')?.addEventListener("change", async (e) => {
+        try { await adminApi("setPlayerTeam", { playerId: p.id, teamId: e.target.value }); toast(`${p.name} moved`, "good"); }
+        catch (ex) { adminError(ex); }
+      });
       li.querySelector('[data-act="remove"]').addEventListener("click", async () => {
         if (!confirm(`Remove ${p.name} and all their scores?`)) return;
         try { await adminApi("removePlayer", { playerId: p.id }); toast(`${p.name} removed`); } catch (ex) { adminError(ex); }
@@ -1199,22 +1408,25 @@
     }
     const t = S.state.tournament;
     if (S.adminNine >= nineCount()) S.adminNine = 0;
-    const players = [...S.state.players].sort((a, b) => a.name.localeCompare(b.name));
+    // In a scramble the scores live on the team cards, so that's what the host edits.
+    const kind = fmt() === "scramble" ? "team" : "player";
+    const players = [...(kind === "team" ? S.state.teams : S.state.players)].sort((a, b) => a.name.localeCompare(b.name));
     el.innerHTML = `
       <div class="panel-bar">
-        <h3 class="section-title">Edit scores</h3>
+        <h3 class="section-title">Edit ${kind === "team" ? "team " : ""}scores</h3>
         ${players.length ? `<div class="seg half-toggle" role="group" aria-label="Holes shown">
           ${ninesHtml((k) => `<button type="button" data-nine="${k}" aria-pressed="${S.adminNine === k}">${9 * k + 1}–${9 * k + 9}</button>`)}
         </div>` : ""}
       </div>
+      ${!players.length && kind === "team" ? `<p class="muted">Add teams to edit their scramble scores.</p>` : ""}
       ${players.length ? `
       <div class="grid-scroll" data-nine="${S.adminNine}">
         <table class="grid">
-          <thead><tr><th class="g-name">Player</th>${t.pars.map((_, i) => `<th class="n${Math.floor(i / 9)}">${i + 1}</th>`).join("")}</tr>
+          <thead><tr><th class="g-name">${kind === "team" ? "Team" : "Player"}</th>${t.pars.map((_, i) => `<th class="n${Math.floor(i / 9)}">${i + 1}</th>`).join("")}</tr>
           <tr class="par-row"><td class="g-name">Par</td>${t.pars.map((p, i) => `<td class="n${Math.floor(i / 9)}">${p}</td>`).join("")}</tr></thead>
           <tbody>
             ${players.map((p) => `<tr><th class="g-name" scope="row">${esc(p.name)}</th>${p.scores.map((s, i) =>
-              `<td class="n${Math.floor(i / 9)}"><input class="gcell" inputmode="numeric" maxlength="2" data-pid="${p.id}" data-hole="${i}" value="${s ?? ""}" aria-label="${esc(p.name)} hole ${i + 1}"></td>`).join("")}</tr>`).join("")}
+              `<td class="n${Math.floor(i / 9)}"><input class="gcell" inputmode="numeric" maxlength="2" data-kind="${kind}" data-pid="${p.id}" data-hole="${i}" value="${s ?? ""}" aria-label="${esc(p.name)} hole ${i + 1}"></td>`).join("")}</tr>`).join("")}
           </tbody>
         </table>
       </div>
@@ -1231,8 +1443,8 @@
     el.querySelectorAll(".gcell").forEach((inp) => {
       inp.addEventListener("input", () => {
         inp.value = inp.value.replace(/\D/g, "").slice(0, 2);
-        const key = `${inp.dataset.pid}:${inp.dataset.hole}`;
-        const p = S.state.players.find((x) => x.id === inp.dataset.pid);
+        const key = `${inp.dataset.kind}:${inp.dataset.pid}:${inp.dataset.hole}`;
+        const p = (inp.dataset.kind === "team" ? S.state.teams : S.state.players).find((x) => x.id === inp.dataset.pid);
         const orig = p?.scores[+inp.dataset.hole];
         const val = inp.value === "" ? null : +inp.value;
         if (val === (orig ?? null)) S.adminDirty.delete(key); else S.adminDirty.set(key, val);
@@ -1254,8 +1466,8 @@
     });
     $("#grid-save", el)?.addEventListener("click", async () => {
       const changes = [...S.adminDirty].map(([k, score]) => {
-        const [playerId, hole] = k.split(":");
-        return { playerId, hole: +hole, score };
+        const [kind, id, hole] = k.split(":");
+        return kind === "team" ? { teamId: id, hole: +hole, score } : { playerId: id, hole: +hole, score };
       });
       try {
         await adminApi("setScores", { changes });
@@ -1410,7 +1622,7 @@
           ${sk.carry ? `<p class="tv-empty">${sk.carry} skin${sk.carry > 1 ? "s" : ""} carrying over</p>` : ""}` : `
           <table class="lb tv-lb">
             <thead>
-              <tr><th class="c-pos">Pos</th><th class="c-player">Player</th><th class="c-topar">To Par</th><th class="c-thru">Thru</th>
+              <tr><th class="c-pos">Pos</th><th class="c-player">${teamFormat() ? "Team" : "Player"}</th><th class="c-topar">To Par</th><th class="c-thru">Thru</th>
                 ${holeHeads(0, holeCount())}<th class="c-tot">${mode === "net" ? "Net" : "Tot"}</th></tr>
             </thead>
             <tbody>

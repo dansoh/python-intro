@@ -69,10 +69,17 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
   putts when the host turns on Track putts in Admin, handicap stroke hints per hole,
   running position and to-par. A scorekeeper can add up to 4 players on one
   phone and switch between them; only that phone can post those players' scores.
+- **Teams and formats** (Admin > Tournament > Format, Admin > Teams): create
+  teams, players pick theirs when they join (the host can move them).
+  - *Scramble*: each team posts one score per hole; anyone on the team can enter it.
+  - *Best ball*: everyone plays their own ball; a team's hole score is its lowest,
+    counted once every teammate has posted. Teams and players both get boards.
+  - *Individual*: players compete; teams get a combined total.
 - **Skins game** (Admin > Tournament > Skins game): a Skins page with standings
   and a hole-by-hole breakdown. Lowest score on a hole wins a skin; a hole
   settles once everyone playing has posted it. Ties either carry over to the
-  next hole or give each tied player a skin. Uses net scores when handicap
+  next hole or give each tied player a skin. Team vs team in Best ball and
+  Scramble. Uses net scores when handicap
   scoring is on, and appears in the TV rotation.
 - **Clubhouse TV mode** (`#/tv`): full-screen board for a TV, pages through
   large fields automatically, with a join QR code.

@@ -51,8 +51,10 @@ def new_state():
             "putts": False,
             "skins": False,
             "skinsTies": "carry",  # "carry": a tied hole's skin carries over; "point": each tied player gets one
+            "format": "individual",  # "individual", "bestball" (low team score per hole) or "scramble" (one team score)
         },
         "players": [],
+        "teams": [],  # scramble scores live on the team; other formats use the players' own scores
         "events": [],
         "updatedAt": now_ms(),
     }
@@ -77,7 +79,11 @@ class Store:
     def _load(self):
         if self.path.exists():
             raw = json.loads(self.path.read_text())
-            return raw["state"], raw["secrets"]
+            state = raw["state"]
+            state.setdefault("teams", [])  # data saved before teams existed
+            for p in state["players"]:
+                p.setdefault("teamId", None)
+            return state, raw["secrets"]
         return new_state(), {"adminPin": None, "playerTokens": {}}
 
     def _save(self):
@@ -187,6 +193,39 @@ def name_taken(state, name, except_id=None):
     return any(p["name"].lower() == name.lower() and p["id"] != except_id for p in state["players"])
 
 
+FORMATS = ("individual", "bestball", "scramble")
+
+
+def find_team(state, team_id):
+    for t in state["teams"]:
+        if t["id"] == team_id:
+            return t
+    raise ApiError(HTTPStatus.NOT_FOUND, "Team not found.")
+
+
+def clean_team_id(state, value):
+    """None (no team) or the id of an existing team."""
+    if value in (None, ""):
+        return None
+    return find_team(state, str(value))["id"]
+
+
+def make_team(state, name):
+    if any(t["name"].lower() == name.lower() for t in state["teams"]):
+        raise ApiError(HTTPStatus.CONFLICT, f"There's already a team called {name}.")
+    n = hole_count(state)
+    return {"id": secrets.token_hex(6), "name": name, "scores": [None] * n, "putts": [None] * n, "updatedAt": now_ms()}
+
+
+def score_target(state, player):
+    """Where a player's score goes: their team's card in a scramble, otherwise their own."""
+    if state["tournament"].get("format") == "scramble":
+        if not player.get("teamId"):
+            raise ApiError(HTTPStatus.CONFLICT, "Pick your team first: in a scramble, scores are posted for the team.")
+        return find_team(state, player["teamId"])
+    return player
+
+
 def make_player(state, name, handicap):
     if name_taken(state, name):
         raise ApiError(HTTPStatus.CONFLICT, f"{name} is already on the leaderboard.")
@@ -196,6 +235,7 @@ def make_player(state, name, handicap):
         "handicap": handicap,
         "scores": [None] * hole_count(state),
         "putts": [None] * hole_count(state),
+        "teamId": None,
         "joinedAt": now_ms(),
         "updatedAt": now_ms(),
     }
@@ -228,12 +268,15 @@ def set_hole(state, player, hole, score, putts):
 def api_join(body):
     name = clean_name(body.get("name"))
     handicap = clean_handicap(body.get("handicap"))
+    raw_team = body.get("teamId")
 
     def fn(state, sec):
         if state["tournament"]["locked"]:
             raise ApiError(HTTPStatus.FORBIDDEN, "Scoring is locked by the tournament host.")
+        team_id = clean_team_id(state, raw_team)
         # Players can only set a handicap when the host has turned handicap scoring on.
         player = make_player(state, name, handicap if state["tournament"].get("handicaps") else None)
+        player["teamId"] = team_id
         state["players"].append(player)
         token = secrets.token_urlsafe(18)
         sec["playerTokens"][player["id"]] = token
@@ -256,10 +299,30 @@ def api_score(body):
             raise ApiError(HTTPStatus.FORBIDDEN, "This device can't post scores for that player.")
         if state["tournament"]["locked"]:
             raise ApiError(HTTPStatus.FORBIDDEN, "Scoring is locked by the tournament host.")
-        player = find_player(state, player_id)
+        target = score_target(state, find_player(state, player_id))
         # When putts aren't being tracked, leave whatever was stored.
-        keep = putts if state["tournament"].get("putts") else player["putts"][hole]
-        set_hole(state, player, hole, score, keep)
+        keep = putts if state["tournament"].get("putts") else target["putts"][hole]
+        set_hole(state, target, hole, score, keep)
+        return {"ok": True}
+
+    return STORE.mutate(fn)
+
+
+def api_team(body):
+    """A player picks (or changes) their own team."""
+    player_id = str(body.get("playerId", ""))
+    token = str(body.get("token", ""))
+    raw_team = body.get("teamId")
+
+    def fn(state, sec):
+        expected = sec["playerTokens"].get(player_id)
+        if not expected or not secrets.compare_digest(expected, token):
+            raise ApiError(HTTPStatus.FORBIDDEN, "This device can't change that player.")
+        if state["tournament"]["locked"]:
+            raise ApiError(HTTPStatus.FORBIDDEN, "Scoring is locked by the tournament host.")
+        player = find_player(state, player_id)
+        player["teamId"] = clean_team_id(state, raw_team)
+        player["updatedAt"] = now_ms()
         return {"ok": True}
 
     return STORE.mutate(fn)
@@ -313,6 +376,48 @@ def api_admin(body):
             sec["playerTokens"].pop(player_id, None)
             return {"ok": True}
 
+    elif action == "addTeam":
+        name = clean_name(body.get("name"))
+
+        def fn(state, sec):
+            team = make_team(state, name)
+            state["teams"].append(team)
+            return {"team": team}
+
+    elif action == "renameTeam":
+        team_id = str(body.get("teamId", ""))
+        name = clean_name(body.get("name"))
+
+        def fn(state, sec):
+            team = find_team(state, team_id)
+            if any(t["name"].lower() == name.lower() and t["id"] != team_id for t in state["teams"]):
+                raise ApiError(HTTPStatus.CONFLICT, f"There's already a team called {name}.")
+            team["name"] = name
+            team["updatedAt"] = now_ms()
+            return {"ok": True}
+
+    elif action == "removeTeam":
+        team_id = str(body.get("teamId", ""))
+
+        def fn(state, sec):
+            team = find_team(state, team_id)
+            state["teams"].remove(team)
+            for p in state["players"]:
+                if p.get("teamId") == team_id:
+                    p["teamId"] = None
+            state["events"] = [e for e in state["events"] if e["playerId"] != team_id]
+            return {"ok": True}
+
+    elif action == "setPlayerTeam":
+        player_id = str(body.get("playerId", ""))
+        raw_team = body.get("teamId")
+
+        def fn(state, sec):
+            player = find_player(state, player_id)
+            player["teamId"] = clean_team_id(state, raw_team)
+            player["updatedAt"] = now_ms()
+            return {"ok": True}
+
     elif action == "playerLink":
         # Lets the host hand a phone its scoring rights (e.g. re-pairing a lost device).
         player_id = str(body.get("playerId", ""))
@@ -325,14 +430,14 @@ def api_admin(body):
         changes = body.get("changes") or []
         if not isinstance(changes, list) or len(changes) > 36 * 200 or not all(isinstance(c, dict) for c in changes):
             raise ApiError(HTTPStatus.BAD_REQUEST, "Invalid changes.")
-        parsed = [(str(c.get("playerId", "")), c.get("hole"), clean_score(c.get("score"))) for c in changes]
+        parsed = [(str(c.get("playerId", "")), str(c.get("teamId", "")), c.get("hole"), clean_score(c.get("score")))
+                  for c in changes]
 
         def fn(state, sec):
-            for player_id, raw_hole, score in parsed:
+            for player_id, team_id, raw_hole, score in parsed:
                 hole = clean_hole(raw_hole, hole_count(state))
-                player = find_player(state, player_id)
-                putts = player["putts"][hole]
-                set_hole(state, player, hole, score, putts)
+                card = find_team(state, team_id) if team_id else find_player(state, player_id)
+                set_hole(state, card, hole, score, card["putts"][hole])
             return {"ok": True, "count": len(parsed)}
 
     elif action == "setCourse":
@@ -355,7 +460,7 @@ def api_admin(body):
             state["tournament"]["pars"] = pars
             state["tournament"]["strokeIndex"] = stroke_index
             # Changing the course length keeps scores on holes that still exist.
-            for p in state["players"]:
+            for p in state["players"] + state["teams"]:
                 for key in ("scores", "putts"):
                     p[key] = (p[key] + [None] * holes)[:holes]
             state["events"] = [e for e in state["events"] if e["hole"] < holes]
@@ -369,15 +474,16 @@ def api_admin(body):
         track_putts = bool(body.get("putts"))
         skins = bool(body.get("skins"))
         skins_ties = body.get("skinsTies") if body.get("skinsTies") in ("carry", "point") else "carry"
+        fmt = body.get("format") if body.get("format") in FORMATS else "individual"
 
         def fn(state, sec):
             state["tournament"].update(name=name, subtitle=subtitle, locked=locked, handicaps=handicaps, putts=track_putts,
-                                       skins=skins, skinsTies=skins_ties)
+                                       skins=skins, skinsTies=skins_ties, format=fmt)
             return {"ok": True}
 
     elif action == "resetScores":
         def fn(state, sec):
-            for p in state["players"]:
+            for p in state["players"] + state["teams"]:
                 p["scores"] = [None] * hole_count(state)
                 p["putts"] = [None] * hole_count(state)
             state["events"] = []
@@ -401,6 +507,7 @@ def api_admin(body):
 ROUTES = {
     "/api/join": api_join,
     "/api/score": api_score,
+    "/api/team": api_team,
     "/api/admin": api_admin,
 }
 

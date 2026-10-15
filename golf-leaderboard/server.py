@@ -49,6 +49,8 @@ def new_state():
             "locked": False,
             "handicaps": False,
             "putts": False,
+            "skins": False,
+            "skinsTies": "carry",  # "carry": a tied hole's skin carries over; "point": each tied player gets one
         },
         "players": [],
         "events": [],
@@ -365,9 +367,12 @@ def api_admin(body):
         locked = bool(body.get("locked"))
         handicaps = bool(body.get("handicaps"))
         track_putts = bool(body.get("putts"))
+        skins = bool(body.get("skins"))
+        skins_ties = body.get("skinsTies") if body.get("skinsTies") in ("carry", "point") else "carry"
 
         def fn(state, sec):
-            state["tournament"].update(name=name, subtitle=subtitle, locked=locked, handicaps=handicaps, putts=track_putts)
+            state["tournament"].update(name=name, subtitle=subtitle, locked=locked, handicaps=handicaps, putts=track_putts,
+                                       skins=skins, skinsTies=skins_ties)
             return {"ok": True}
 
     elif action == "resetScores":

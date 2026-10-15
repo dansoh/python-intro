@@ -250,7 +250,8 @@
       history.replaceState(null, "", "#/play");
       view = "play";
     }
-    if (!["board", "play", "join", "admin", "tv"].includes(view)) view = "board";
+    if (!["board", "skins", "play", "join", "admin", "tv"].includes(view)) view = "board";
+    if (view === "skins" && S.state && !S.state.tournament.skins) view = "board";
     if (view === "play" && !S.devicePlayers.length) view = "join";
     if (view === "join" && S.devicePlayers.length >= MAX_PER_PHONE) view = "play";
     const changed = view !== S.view;
@@ -284,8 +285,10 @@
     $("#tournament-subtitle").textContent = t.subtitle || "Live Tournament Scoring";
     document.title = `${t.name} · Leaderboard`;
     const joinTab = $('.tabs a[data-view="join"]');
-    joinTab.textContent = S.devicePlayers.length ? "Add Player" : "Join";
+    joinTab.textContent = S.devicePlayers.length ? "Add" : "Join";
     joinTab.hidden = S.devicePlayers.length >= MAX_PER_PHONE;
+    $('.tabs a[data-view="skins"]').hidden = !t.skins;
+    if (S.view === "skins" && !t.skins) location.hash = "#/board";
     renderLive();
   }
 
@@ -313,7 +316,7 @@
       if (el && !el.innerHTML) el.innerHTML = `<div class="loading"><span class="spinner"></span> Loading the leaderboard…</div>`;
       return;
     }
-    ({ board: renderBoard, play: renderPlay, join: renderJoin, admin: renderAdmin, tv: renderTv })[S.view](entering);
+    ({ board: renderBoard, skins: renderSkins, play: renderPlay, join: renderJoin, admin: renderAdmin, tv: renderTv })[S.view](entering);
   }
 
   // ----- Leaderboard -----
@@ -554,6 +557,149 @@
         <span><span class="sc sc-par">4</span>Par</span>
         <span><span class="sc sc-bogey">5</span>Bogey</span>
         <span><span class="sc sc-double">6</span>Double+</span>
+      </div>`;
+  }
+
+  // ----- Skins -----
+  // Lowest score on a hole wins a skin. A hole is settled once everyone playing (anyone with a score)
+  // has posted it, or when the host locks the board. Ties either carry the skin to the next hole or
+  // give each tied player a skin, per the host's setting. Net scores are used when handicaps are on.
+  function computeSkins(state) {
+    const t = state.tournament;
+    const n = t.pars.length;
+    const net = handicapsOn();
+    const carryMode = t.skinsTies !== "point";
+    const field = state.players.filter((p) => p.scores.some((x) => x != null));
+    const scoreOf = (p, i) => p.scores[i] - (net ? strokesOn(hcp(p), t.strokeIndex[i], n) : 0);
+    const totals = new Map(field.map((p) => [p.id, 0]));
+    const holes = [];
+    let carry = 0;
+    let blocked = false; // carry mode: an unsettled hole means later holes' values aren't known yet
+    for (let i = 0; i < n; i++) {
+      const posted = field.filter((p) => p.scores[i] != null);
+      if (!posted.length) {
+        holes.push({ i, status: "open", worth: carryMode && !blocked && !t.locked ? 1 + carry : 1 });
+        if (carryMode && !t.locked) blocked = true; // once the board is final, unplayed holes don't hold anything up
+        continue;
+      }
+      const low = Math.min(...posted.map((p) => scoreOf(p, i)));
+      const leaders = posted.filter((p) => scoreOf(p, i) === low);
+      const settled = field.length >= 2 && (posted.length === field.length || t.locked);
+      if (!settled) {
+        holes.push({ i, status: "live", leaders, low, posted: posted.length, of: field.length, worth: carryMode && !blocked ? 1 + carry : 1 });
+        if (carryMode) blocked = true;
+        continue;
+      }
+      if (carryMode && blocked) { holes.push({ i, status: "waiting", leaders, low }); continue; }
+      const value = carryMode ? 1 + carry : 1;
+      if (leaders.length === 1) {
+        totals.set(leaders[0].id, totals.get(leaders[0].id) + value);
+        holes.push({ i, status: "won", leaders, low, value });
+        carry = 0;
+      } else if (carryMode) {
+        holes.push({ i, status: "carry", leaders, low, value });
+        carry = value;
+      } else {
+        leaders.forEach((p) => totals.set(p.id, totals.get(p.id) + 1));
+        holes.push({ i, status: "split", leaders, low, value: 1 });
+      }
+    }
+    const standings = field
+      .map((p) => ({ p, skins: totals.get(p.id) }))
+      .sort((a, b) => b.skins - a.skins || a.p.name.localeCompare(b.p.name));
+    standings.forEach((r) => { r.rank = standings.findIndex((o) => o.skins === r.skins) + 1; });
+    standings.forEach((r) => { r.pos = (standings.filter((o) => o.skins === r.skins).length > 1 ? "T" : "") + r.rank; });
+    const settledAll = !blocked && holes.every((h) => h.status !== "open" && h.status !== "live");
+    return { holes, standings, carry: carryMode && !blocked ? carry : 0, carryMode, net, field, settledAll };
+  }
+
+  const nameList = (ps) => ps.map((p) => `<b>${esc(p.name)}</b>`).join(", ");
+
+  function skinsRules(sk) {
+    return `Lowest ${sk.net ? "net " : ""}score on a hole wins a skin. ${sk.carryMode
+      ? "Ties carry the skin over to the next hole."
+      : "Ties: every player tied for the low score gets a skin."} A hole is settled once everyone playing has posted it.`;
+  }
+
+  // Show each played hole, the next unplayed one (with what it's worth), then one line for the rest.
+  function skinsHoleRows(sk, holeRow) {
+    const firstOpen = sk.holes.findIndex((h) => h.status === "open");
+    const restOpen = firstOpen >= 0 && sk.holes.slice(firstOpen + 1).every((h) => h.status === "open");
+    if (!restOpen || firstOpen === sk.holes.length - 1) return sk.holes.map(holeRow).join("");
+    const rest = sk.holes.length - firstOpen - 1;
+    return sk.holes.slice(0, firstOpen + 1).map(holeRow).join("")
+      + `<li class="sk-open sk-rest"><span class="sk-text muted-inline">Holes ${firstOpen + 2}–${sk.holes.length} not played yet</span></li>`;
+  }
+
+  function renderSkins() {
+    const el = $("#view-skins");
+    const t = S.state.tournament;
+    const sk = computeSkins(S.state);
+    if (sk.field.length < 2) {
+      el.innerHTML = `
+        <div class="empty">
+          <h2>Skins</h2>
+          <p>${skinsRules(sk)}</p>
+          <p>The skins game starts once at least two players have posted a score.</p>
+        </div>`;
+      return;
+    }
+    const mine = new Set(S.devicePlayers.map((d) => d.id));
+    const holeRow = (h) => {
+      const par = t.pars[h.i];
+      let text, badge;
+      switch (h.status) {
+        case "won":
+          text = `${nameList(h.leaders)} wins with ${h.low}${h.value > 1 ? ` <span class="muted-inline">(${h.value - 1} carried in)</span>` : ""}`;
+          badge = `<span class="sk-badge won">+${h.value}</span>`;
+          break;
+        case "carry":
+          text = `Tied at ${h.low}: ${nameList(h.leaders)}. Carries over.`;
+          badge = `<span class="sk-badge carry">${h.value} →</span>`;
+          break;
+        case "split":
+          text = `Tied at ${h.low}: ${nameList(h.leaders)} each get a skin.`;
+          badge = `<span class="sk-badge won">+1 each</span>`;
+          break;
+        case "live":
+          text = `${h.leaders.length > 1 ? `Tied at ${h.low} so far: ${nameList(h.leaders)}` : `${nameList(h.leaders)} leads with ${h.low}`} <span class="muted-inline">· ${h.posted} of ${h.of} posted</span>`;
+          badge = `<span class="sk-badge live">Live${h.worth > 1 ? ` · ${h.worth}` : ""}</span>`;
+          break;
+        case "waiting":
+          text = `${h.leaders.length > 1 ? `Tied at ${h.low}: ${nameList(h.leaders)}` : `${nameList(h.leaders)} had the low score (${h.low})`} <span class="muted-inline">· settles after earlier holes</span>`;
+          badge = `<span class="sk-badge">Waiting</span>`;
+          break;
+        default:
+          text = `<span class="muted-inline">Not played yet</span>`;
+          badge = h.worth > 1 ? `<span class="sk-badge carry">Worth ${h.worth}</span>` : "";
+      }
+      return `<li class="sk-${h.status}"><span class="sk-hole"><b>${h.i + 1}</b><small>Par ${par}</small></span><span class="sk-text">${text}</span>${badge}</li>`;
+    };
+    el.innerHTML = `
+      <div class="skins">
+        <div class="board-card">
+          <div class="board-bar">
+            <div>
+              <h2 class="board-title">Skins</h2>
+              <p class="board-meta">${sk.carryMode ? "Ties carry over" : "Ties: a skin each"}${sk.net ? " · Net scores" : ""}${t.locked ? ' · <span class="pill-locked">Final</span>' : ""}</p>
+            </div>
+          </div>
+          <table class="lb sk-table">
+            <thead><tr><th class="c-pos" scope="col">Pos</th><th class="c-player" scope="col">Player</th><th class="c-tot" scope="col">Skins</th></tr></thead>
+            <tbody>
+              ${sk.standings.map((r) => `
+                <tr class="${r.skins ? "" : "sk-zero"}">
+                  <td class="c-pos">${r.skins ? esc(r.pos) : "–"}</td>
+                  <td class="c-player"><span class="pname">${esc(r.p.name)}</span>${mine.has(r.p.id) ? '<span class="you">You</span>' : ""}</td>
+                  <td class="c-tot">${r.skins}</td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+          ${sk.carry ? `<p class="board-hint"><b>${sk.carry} skin${sk.carry > 1 ? "s" : ""}</b> ${t.locked ? "left unclaimed: the last settled hole was tied." : "carrying over to the next hole."}</p>` : ""}
+        </div>
+        <p class="muted sk-rules">${skinsRules(sk)}</p>
+        <h3 class="feed-title">Hole by hole</h3>
+        <ol class="sk-holes">${skinsHoleRows(sk, holeRow)}</ol>
       </div>`;
   }
 
@@ -933,6 +1079,16 @@
           <span class="switch-ui" aria-hidden="true"></span>
           <span>Track putts <small>adds optional putt buttons to score entry and putts to scorecards</small></span>
         </label>
+        <label class="switch">
+          <input type="checkbox" name="skins" ${t.skins ? "checked" : ""}>
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span>Skins game <small>adds a Skins page: lowest score on each hole wins a skin</small></span>
+        </label>
+        <fieldset class="radio-group">
+          <legend>Skins ties</legend>
+          <label><input type="radio" name="skinsTies" value="carry" ${t.skinsTies !== "point" ? "checked" : ""}> <span>Carry over <small>the skin rolls to the next hole</small></span></label>
+          <label><input type="radio" name="skinsTies" value="point" ${t.skinsTies === "point" ? "checked" : ""}> <span>Point each <small>every tied player gets a skin</small></span></label>
+        </fieldset>
         <button class="btn btn-gold btn-sm" type="submit">Save</button>
       </form>`;
     const form = $("#settings-form", el);
@@ -940,7 +1096,7 @@
       e.preventDefault();
       const fd = new FormData(form);
       try {
-        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on", putts: fd.get("putts") === "on" });
+        await adminApi("setSettings", { name: fd.get("name"), subtitle: fd.get("subtitle"), locked: fd.get("locked") === "on", handicaps: fd.get("handicaps") === "on", putts: fd.get("putts") === "on", skins: fd.get("skins") === "on", skinsTies: fd.get("skinsTies") });
         toast("Tournament saved", "good");
       } catch (ex) { adminError(ex); }
     });
@@ -1223,9 +1379,12 @@
     const mode = effectiveMode();
     const rows = computeBoard(state, mode);
     const perPage = Math.max(4, Math.floor((window.innerHeight - 260) / 64));
-    const pages = Math.max(1, Math.ceil(rows.length / perPage));
+    const boardPages = Math.max(1, Math.ceil(rows.length / perPage));
+    const sk = t.skins ? computeSkins(state) : null;
+    const pages = boardPages + (sk && sk.field.length >= 2 ? 1 : 0);
     S.tvPage %= pages;
     const pageRows = rows.slice(S.tvPage * perPage, (S.tvPage + 1) * perPage);
+    const skinsPage = S.tvPage === boardPages;
 
     el.innerHTML = `
       <div class="tv">
@@ -1240,6 +1399,15 @@
           </div>
         </div>
         <div class="tv-body">
+          ${skinsPage ? `
+          <table class="lb tv-lb sk-table">
+            <thead><tr><th class="c-pos">Pos</th><th class="c-player">Skins${sk.carryMode ? " · ties carry over" : " · ties: a skin each"}</th><th class="c-tot">Skins</th></tr></thead>
+            <tbody>
+              ${sk.standings.slice(0, perPage).map((r) => `
+                <tr><td class="c-pos">${r.skins ? esc(r.pos) : "–"}</td><td class="c-player"><span class="pname">${esc(r.p.name)}</span></td><td class="c-tot">${r.skins}</td></tr>`).join("")}
+            </tbody>
+          </table>
+          ${sk.carry ? `<p class="tv-empty">${sk.carry} skin${sk.carry > 1 ? "s" : ""} carrying over</p>` : ""}` : `
           <table class="lb tv-lb">
             <thead>
               <tr><th class="c-pos">Pos</th><th class="c-player">Player</th><th class="c-topar">To Par</th><th class="c-thru">Thru</th>
@@ -1257,10 +1425,10 @@
                 </tr>`).join("")}
             </tbody>
           </table>
-          ${!rows.length ? `<p class="tv-empty">Waiting for the field to tee off…</p>` : ""}
+          ${!rows.length ? `<p class="tv-empty">Waiting for the field to tee off…</p>` : ""}`}
         </div>
         <div class="tv-foot">
-          ${pages > 1 ? `<span>Page ${S.tvPage + 1} of ${pages}</span>` : "<span></span>"}
+          ${pages > 1 ? `<span>${skinsPage ? "Skins" : `Leaderboard${boardPages > 1 ? ` ${S.tvPage + 1} of ${boardPages}` : ""}`}</span>` : "<span></span>"}
           <a href="#/board">Exit TV mode</a>
         </div>
       </div>`;

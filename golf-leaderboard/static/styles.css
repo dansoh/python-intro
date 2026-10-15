@@ -160,7 +160,13 @@ a { color: var(--gold); }
 }
 .tab-admin { margin-left: auto; }
 .tab-admin svg { width: 16px; height: 16px; }
-@media (max-width: 480px) { .tab-admin span { display: none; } }
+@media (max-width: 480px) {
+  .tab-admin span { display: none; }
+  .tabs { gap: 0; padding: 0 8px; }
+  .tabs a { padding: 10px 9px 12px; font-size: 0.72rem; letter-spacing: 0.08em; }
+  .tabs a.active::after { left: 8px; right: 8px; }
+}
+@media (max-width: 370px) { .tabs a { padding: 10px 7px 12px; letter-spacing: 0.04em; } }
 
 /* ---------- layout ---------- */
 .main { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 20px 16px 32px; }
@@ -815,3 +821,41 @@ body.is-tv .main { max-width: none; padding: 24px 32px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- skins ---------- */
+.skins { max-width: 760px; margin: 0 auto; }
+.skins .board-card { margin-bottom: 14px; }
+.sk-table .c-player { width: 100%; }
+.sk-table .c-tot { width: 80px; font-family: var(--serif); font-size: 1.3rem; }
+.sk-table tbody tr { border-bottom: 1px solid var(--line); }
+.sk-table tr.sk-zero td { color: var(--ink-soft); }
+.sk-rules { margin: 0 0 18px; line-height: 1.5; }
+.muted-inline { color: var(--on-green-soft); font-weight: 400; }
+.sk-holes { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 6px; }
+.sk-holes li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.9rem;
+}
+.sk-holes li.sk-won, .sk-holes li.sk-split { border-color: rgba(244, 196, 48, 0.45); }
+.sk-holes li.sk-open { opacity: 0.6; }
+.sk-holes li.sk-rest { justify-content: center; }
+.sk-hole { flex: none; width: 44px; height: 44px; border-radius: 8px; background: var(--paper); color: var(--ink); display: grid; place-items: center; align-content: center; line-height: 1.05; }
+.sk-hole b { font-family: var(--serif); font-size: 1.1rem; }
+.sk-hole small { font-size: 0.56rem; letter-spacing: 0.04em; color: var(--ink-soft); }
+.sk-text { flex: 1; min-width: 0; }
+.sk-badge { flex: none; padding: 4px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; background: rgba(255, 255, 255, 0.08); color: var(--on-green-soft); white-space: nowrap; }
+.sk-badge.won { background: var(--gold); color: var(--green-950); }
+.sk-badge.carry { background: rgba(244, 196, 48, 0.16); color: var(--gold); border: 1px solid rgba(244, 196, 48, 0.4); }
+.sk-badge.live { background: rgba(200, 16, 46, 0.25); color: #ffb3bf; }
+
+.radio-group { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.radio-group legend { padding: 0; margin-bottom: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--on-green-soft); }
+.radio-group label { display: flex; align-items: center; gap: 10px; font-size: 0.92rem; cursor: pointer; }
+.radio-group input { width: 20px; height: 20px; accent-color: var(--gold); flex: none; }
+.radio-group small { display: block; color: var(--on-green-soft); font-size: 0.8rem; }

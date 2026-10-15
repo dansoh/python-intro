@@ -69,6 +69,11 @@ The Admin page shows a QR code for the site. Print it or put it on the first tee
   putts when the host turns on Track putts in Admin, handicap stroke hints per hole,
   running position and to-par. A scorekeeper can add up to 4 players on one
   phone and switch between them; only that phone can post those players' scores.
+- **Skins game** (Admin > Tournament > Skins game): a Skins page with standings
+  and a hole-by-hole breakdown. Lowest score on a hole wins a skin; a hole
+  settles once everyone playing has posted it. Ties either carry over to the
+  next hole or give each tied player a skin. Uses net scores when handicap
+  scoring is on, and appears in the TV rotation.
 - **Clubhouse TV mode** (`#/tv`): full-screen board for a TV, pages through
   large fields automatically, with a join QR code.
 - **Any length of round**: 9, 18, 27 or 36 holes, set in Admin > Course. For a

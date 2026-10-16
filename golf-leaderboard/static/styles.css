@@ -896,3 +896,35 @@ body.is-tv .main { max-width: none; padding: 24px 32px; }
 .team-select { width: auto; min-height: 36px; padding: 6px 10px; font-size: 0.85rem; }
 .team-form { grid-template-columns: 1fr auto; }
 @media (max-width: 760px) { .team-select { min-height: 42px; flex: 1 0 100%; } }
+
+/* ---------- sortable leaderboard ---------- */
+.lb th.sortable button {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  justify-content: center;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  padding: 6px 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.lb th.c-player.sortable button { justify-content: flex-start; }
+.lb th.sortable button:hover { color: var(--ink); }
+.lb th.sortable button:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 2px; border-radius: 3px; }
+.lb th.sorted { color: var(--ink); }
+.sort-arrow { font-style: normal; font-size: 0.6rem; color: var(--gold-deep); }
+.lb .c-skins { width: 60px; font-family: var(--serif); font-size: 1.1rem; font-weight: 700; color: var(--augusta); }
+.lb thead .c-skins { font-family: var(--sans); font-size: 0.68rem; }
+.board-hint .link-small { margin-left: 6px; padding: 0; font-size: 0.75rem; color: var(--augusta); }
+@media (max-width: 480px) { .lb .c-skins { width: 48px; } }
+.pos-skins { display: inline-block; font-size: 0.58rem; line-height: 1.15; letter-spacing: 0.1em; color: var(--gold-deep); }
+@media (max-width: 480px) {
+  .lb .c-chev { display: none; }
+  .lb .c-thru { width: 40px; }
+}

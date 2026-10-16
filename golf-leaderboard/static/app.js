@@ -28,6 +28,7 @@
     connected: false,
     view: null,
     mode: store.get("lb.mode", "gross"),
+    sort: store.get("lb.sort", { key: "topar", dir: 1 }), // each viewer's own leaderboard sort
     expanded: new Set(),
     ranks: new Map(),      // playerId -> last numeric rank, for movement arrows
     moves: new Map(),      // playerId -> +n / -n positions moved on last change
@@ -390,7 +391,7 @@
       ${boardCard({
         title: teamsFirst ? "Teams" : "Leaders",
         meta: `${FORMAT_LABELS[fmt()]} · Course par <strong>${coursePar}</strong> · ${rows.length} ${unitWord}${rows.length === 1 ? "" : "s"}`,
-        rows, unitWord, showModes: !teamsFirst,
+        rows, unitWord, showModes: !teamsFirst, withSkins: true,
       })}
       ${fmt() === "bestball" && state.players.length ? boardCard({
         title: "Players", meta: "Every player's own round", rows: computeBoard(state, mode, state.players), unitWord: "player", showModes: true,
@@ -407,6 +408,17 @@
       S.ranks = new Map(computeBoard(S.state, effectiveMode()).map((r) => [r.p.id, r.rank]));
       renderBoard();
     }));
+    el.querySelectorAll("[data-sort]").forEach((b) => b.addEventListener("click", () => {
+      const key = b.dataset.sort;
+      S.sort = S.sort.key === key ? { key, dir: -S.sort.dir } : { key, dir: SORT_FIRST_DIR[key] };
+      store.set("lb.sort", S.sort);
+      renderBoard();
+    }));
+    el.querySelectorAll("[data-sort-reset]").forEach((b) => b.addEventListener("click", () => {
+      S.sort = { key: "topar", dir: 1 };
+      store.set("lb.sort", S.sort);
+      renderBoard();
+    }));
     el.querySelectorAll("tr.row").forEach((tr) => {
       const toggle = () => {
         const id = tr.dataset.id;
@@ -419,11 +431,45 @@
     S.flash.clear();
   }
 
-  function boardCard({ title, meta, rows, unitWord, showModes }) {
+  // Sorting: tap a header to sort by it, tap again to flip. Pos shows the tournament position, except
+  // when sorted by Skins, where it shows the skins ranking instead.
+  const SORT_FIRST_DIR = { topar: 1, thru: -1, skins: -1, tot: 1, name: 1 };
+
+  function sortRows(rows, sort, skinsBy) {
+    if (sort.key === "topar") return sort.dir === 1 ? rows : [...rows].sort((a, b) => (!a.thru !== !b.thru ? (a.thru ? -1 : 1) : 0) || (b.toPar - a.toPar) || a.p.name.localeCompare(b.p.name));
+    const val = {
+      thru: (r) => r.thru,
+      tot: (r) => (r.thru ? r.total : null),
+      skins: (r) => skinsBy?.get(r.p.id)?.skins ?? null,
+      name: (r) => r.p.name.toLowerCase(),
+    }[sort.key];
+    if (!val) return rows;
+    return [...rows].sort((a, b) => {
+      const x = val(a), y = val(b);
+      if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1; // blanks always last
+      const c = typeof x === "string" ? x.localeCompare(y) : x - y;
+      return c * sort.dir || (a.rank ?? 999) - (b.rank ?? 999);
+    });
+  }
+
+  function boardCard({ title, meta, rows, unitWord, showModes, withSkins }) {
     const t = S.state.tournament;
     const mode = effectiveMode();
     const coursePar = sum(t.pars);
     const Unit = unitWord[0].toUpperCase() + unitWord.slice(1);
+    // Skins column: on the main board when the skins game is on (it ranks the same teams or players).
+    const sk = withSkins && t.skins ? computeSkins(S.state) : null;
+    const skinsBy = sk ? new Map(sk.standings.map((x) => [x.p.id, x])) : null;
+    let sort = S.sort;
+    if (sort.key === "skins" && !skinsBy) sort = { key: "topar", dir: 1 };
+    const sorted = sortRows(rows, sort, skinsBy);
+    const bySkins = sort.key === "skins";
+    const head = (key, label, cls) => {
+      const on = sort.key === key;
+      const aria = on ? (sort.dir === 1 ? "ascending" : "descending") : "none";
+      return `<th class="${cls} sortable${on ? " sorted" : ""}" scope="col" aria-sort="${aria}"><button type="button" data-sort="${key}">${label}${on ? `<i class="sort-arrow">${sort.dir === 1 ? "▲" : "▼"}</i>` : ""}</button></th>`;
+    };
+    const isDefault = sort.key === "topar" && sort.dir === 1;
     return `
       <div class="board-card">
         <div class="board-bar">
@@ -442,26 +488,27 @@
           <table class="lb${holeCount() > 18 ? " many" : ""}">
             <thead>
               <tr>
-                <th class="c-pos" scope="col">Pos</th>
-                <th class="c-player" scope="col">${Unit}</th>
-                <th class="c-topar" scope="col">To Par</th>
-                <th class="c-thru" scope="col">Thru</th>
+                <th class="c-pos" scope="col">${bySkins ? '<span class="pos-skins">Skins<br>Pos</span>' : "Pos"}</th>
+                ${head("name", Unit, "c-player")}
+                ${head("topar", "To Par", "c-topar")}
+                ${head("thru", "Thru", "c-thru")}
+                ${skinsBy ? head("skins", "Skins", "c-skins") : ""}
                 ${ninesHtml((k) => `${holeHeads(9 * k, 9 * k + 9)}<th class="hc c-sub" scope="col">${NINE_LABELS[k]}</th>`)}
-                <th class="c-tot" scope="col">${mode === "net" && showModes ? "Net" : "Tot"}</th>
+                ${head("tot", mode === "net" && showModes ? "Net" : "Tot", "c-tot")}
                 <th class="c-chev" aria-hidden="true"></th>
               </tr>
               <tr class="par-row">
-                <td></td><td class="c-player">Par</td><td></td><td></td>
+                <td></td><td class="c-player">Par</td><td></td><td></td>${skinsBy ? "<td></td>" : ""}
                 ${ninesHtml((k) => { const np = t.pars.slice(9 * k, 9 * k + 9); return `${np.map((p) => `<td class="hc">${p}</td>`).join("")}<td class="hc c-sub">${sum(np)}</td>`; })}
                 <td class="c-tot">${coursePar}</td><td></td>
               </tr>
             </thead>
             <tbody>
-              ${rows.map((r) => boardRow(r, t)).join("")}
+              ${sorted.map((r) => boardRow(r, t, { skinsBy, bySkins })).join("")}
             </tbody>
           </table>
         </div>
-        <p class="board-hint">Tap a ${unitWord} for the scorecard.</p>` : `<p class="board-hint">${unitWord === "team" ? "No teams yet. The host sets them up on the admin page." : "No players yet."}</p>`}
+        <p class="board-hint">Tap a ${unitWord} for the scorecard. Tap a column to sort.${isDefault ? "" : ` <button type="button" class="link-small" data-sort-reset>Reset sort</button>`}</p>` : `<p class="board-hint">${unitWord === "team" ? "No teams yet. The host sets them up on the admin page." : "No players yet."}</p>`}
       </div>`;
   }
 
@@ -496,8 +543,10 @@
     return h;
   }
 
-  function boardRow(r, t) {
+  function boardRow(r, t, { skinsBy = null, bySkins = false } = {}) {
     const p = r.p;
+    const sk = skinsBy?.get(p.id);
+    const pos = bySkins ? (sk?.skins ? sk.pos : "–") : r.pos;
     const open = S.expanded.has(p.id);
     const move = S.moves.get(p.id);
     const moveHtml = move
@@ -512,10 +561,10 @@
       }
       return h;
     };
-    const cols = 4 + holeCount() + nineCount() + 2;
+    const cols = 4 + (skinsBy ? 1 : 0) + holeCount() + nineCount() + 2;
     return `
       <tr class="row${open ? " open" : ""}${S.flash.has(p.id) ? " flash" : ""}${r.thru === holeCount() ? " finished" : ""}" data-id="${p.id}" tabindex="0" aria-expanded="${open}">
-        <td class="c-pos">${esc(r.pos)}${moveHtml}</td>
+        <td class="c-pos">${esc(pos)}${bySkins ? "" : moveHtml}</td>
         <td class="c-player">
           <span class="pname">${esc(p.name)}</span>${mine ? '<span class="you">You</span>' : ""}
           ${hcp(p) != null ? `<span class="hcp">${p.handicap}</span>` : ""}
@@ -523,6 +572,7 @@
         </td>
         <td class="c-topar"><span class="${toParClass(r.toPar, r.thru > 0)}">${fmtToPar(r.toPar, r.thru > 0)}</span></td>
         <td class="c-thru">${thruLabel(r)}</td>
+        ${skinsBy ? `<td class="c-skins">${sk ? fmtSkins(sk.skins) : "–"}</td>` : ""}
         ${ninesHtml((k) => `${cells(9 * k, 9 * k + 9)}<td class="hc c-sub">${r.nines[k] ?? ""}</td>`)}
         <td class="c-tot">${r.thru ? r.total : ""}</td>
         <td class="c-chev" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></td>

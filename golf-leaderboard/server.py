@@ -10,6 +10,7 @@ updates live on everyone's phone.
     GOLF_ADMIN_PIN=4321 python3 server.py
 """
 
+import hashlib
 import json
 import os
 import queue
@@ -26,6 +27,15 @@ STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = Path(os.environ.get("GOLF_DATA_DIR", BASE_DIR / "data"))
 DATA_FILE = DATA_DIR / "tournament.json"
 
+def asset_version():
+    """Short fingerprint of the app files: changes on every deploy that changes them."""
+    h = hashlib.sha1()
+    for name in ("app.js", "styles.css"):
+        h.update((STATIC_DIR / name).read_bytes())
+    return h.hexdigest()[:10]
+
+
+ASSET_VERSION = asset_version()
 HOLE_COUNTS = (9, 18, 27, 36)  # the course length is set by how many pars the host enters
 DEFAULT_PARS = [4, 4, 4, 3, 5, 4, 3, 4, 5, 4, 3, 5, 4, 4, 5, 4, 3, 4]
 DEFAULT_STROKE_INDEX = [7, 3, 11, 15, 1, 9, 17, 5, 13, 8, 16, 2, 10, 4, 14, 6, 18, 12]
@@ -555,10 +565,24 @@ class Handler(SimpleHTTPRequestHandler):
             self.stream()
         elif path.startswith("/api/"):
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "Not found."})
+        elif path in ("/", "/index.html") or not (STATIC_DIR / path.lstrip("/")).is_file():
+            self.send_app_shell()  # single-page app: unknown paths get the app shell too
         else:
-            if path not in ("/", "/index.html") and not (STATIC_DIR / path.lstrip("/")).is_file():
-                self.path = "/"  # single-page app: unknown paths get the app shell
             super().do_GET()
+
+    def send_app_shell(self):
+        # Point the page at this deploy's app files (?v=...), so a browser holding an older copy
+        # fetches the new one instead of reusing it.
+        html = (STATIC_DIR / "index.html").read_text()
+        for name in ("/app.js", "/styles.css"):
+            html = html.replace(f'"{name}"', f'"{name}?v={ASSET_VERSION}"')
+        data = html.encode()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]

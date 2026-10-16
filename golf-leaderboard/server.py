@@ -528,6 +528,10 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         if self.path.startswith("/api/") or self.path in ("/", "/index.html"):
             self.send_header("Cache-Control", "no-store")
+        else:
+            # App files: browsers may keep a copy but must check for a newer one on every load,
+            # so phones pick up a redeploy right away (unchanged files come back as a quick 304).
+            self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
     def send_json(self, status, payload):
